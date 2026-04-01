@@ -1,0 +1,377 @@
+package com.example.ex01
+
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class RichTextMarkupTest {
+    @Test
+    fun wrapSelectionWithTag_wrapsSelectedTextAndKeepsSelectionInside() {
+        val value = TextFieldValue("Hello world", selection = TextRange(6, 11))
+
+        val wrapped = wrapSelectionWithTag(value, BOLD_OPEN_MARKER.toString(), BOLD_CLOSE_MARKER.toString())
+
+        assertEquals("Hello \uE000world\uE001", wrapped.text)
+        assertEquals(TextRange(12), wrapped.selection)
+    }
+
+    @Test
+    fun clearRichTextFormatting_removesMarkupFromSelection() {
+        val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(0, 13))
+
+        val cleared = clearRichTextFormatting(value)
+
+        assertEquals("Hello world", cleared.text)
+        assertEquals(TextRange(0, 11), cleared.selection)
+    }
+
+    @Test
+    fun renderRichTextMarkup_hidesMarkersAndLegacyBoldTags() {
+        val complete = renderRichTextMarkup("Hello [b]world[/b]")
+        val markerBased = renderRichTextMarkup("Hello \uE000world\uE001")
+
+        assertEquals("Hello world", complete.text)
+        assertEquals("Hello world", markerBased.text)
+    }
+
+    @Test
+    fun renderRichTextMarkup_hidesMarkersAndLegacyItalicTags() {
+        val complete = renderRichTextMarkup("Hello [i]world[/i]")
+        val markerBased = renderRichTextMarkup("Hello \uE002world\uE003")
+
+        assertEquals("Hello world", complete.text)
+        assertEquals("Hello world", markerBased.text)
+    }
+
+    @Test
+    fun richTextVisualTransformation_mapsFinalVisibleOffsetToRawEnd() {
+        val raw = "First \uE000row\uE001\nLast \uE000row\uE001"
+        val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
+
+        assertEquals("First row\nLast row", transformed.text.text)
+        assertEquals(raw.length - 1, transformed.offsetMapping.transformedToOriginal(transformed.text.length))
+    }
+
+    @Test
+    fun richTextVisualTransformation_mapsFormattedVisibleStartInsideSpan() {
+        val raw = "\uE000Hello\uE001"
+        val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
+
+        assertEquals("Hello", transformed.text.text)
+        assertEquals(1, transformed.offsetMapping.transformedToOriginal(0))
+        assertEquals(6, transformed.offsetMapping.transformedToOriginal(5))
+        assertTrue(isBoldFormattingActive(TextFieldValue(raw, selection = TextRange(6))))
+    }
+
+    @Test
+    fun richTextVisualTransformation_mapsEmptyBoldSpanCaretBetweenMarkers() {
+        val raw = "\uE000\uE001"
+        val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
+
+        assertEquals("", transformed.text.text)
+        assertEquals(1, transformed.offsetMapping.transformedToOriginal(0))
+        assertTrue(isBoldFormattingActive(TextFieldValue(raw, selection = TextRange(1))))
+    }
+
+    @Test
+    fun normalizeRichTextMarkup_convertsLegacyBoldTagsToMarkers() {
+        val normalized = normalizeRichTextMarkup(
+            TextFieldValue("Cătălin [b]test[/b]", selection = TextRange(19, 19))
+        )
+
+        assertEquals("Cătălin \uE000test\uE001", normalized.text)
+        assertEquals(TextRange(14), normalized.selection)
+    }
+
+    @Test
+    fun normalizeRichTextMarkup_convertsLegacyItalicTagsToMarkers() {
+        val normalized = normalizeRichTextMarkup(
+            TextFieldValue("Cătălin [i]test[/i]", selection = TextRange(19, 19))
+        )
+
+        assertEquals("Cătălin \uE002test\uE003", normalized.text)
+        assertEquals(TextRange(14), normalized.selection)
+    }
+
+    @Test
+    fun sanitizeRichTextTyping_stripsPartialBoldTags() {
+        val sanitized = sanitizeRichTextTyping(
+            TextFieldValue("Ce faci azi?[/b", selection = TextRange(12, 12))
+        )
+
+        assertEquals("Ce faci azi?", sanitized.text)
+        assertEquals(TextRange(12, 12), sanitized.selection)
+    }
+
+    @Test
+    fun collapseEmptyBoldSpans_removesMarkers_whenBoldedWord_isDeleted() {
+        val collapsed = collapseEmptyBoldSpans(
+            TextFieldValue("Cătălin \uE000\uE001", selection = TextRange(8, 8))
+        )
+
+        assertEquals("Cătălin ", collapsed.text)
+        assertEquals(TextRange(8, 8), collapsed.selection)
+    }
+
+    @Test
+    fun collapseEmptyFormattingSpans_removesEmptySpan_afterDeletion_whenPreservationDisabled() {
+        val collapsed = collapseEmptyFormattingSpans(
+            TextFieldValue("Cătălin \uE000\uE001", selection = TextRange(9, 9)),
+            preserveCollapsedSelectionSpan = false
+        )
+
+        assertEquals("Cătălin ", collapsed.text)
+        assertEquals(TextRange(8, 8), collapsed.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_wrapsAndUnwrapsSelectedText() {
+        val selected = TextFieldValue("Hello world", selection = TextRange(6, 11))
+        val bolded = toggleBoldFormatting(selected)
+
+        assertEquals("Hello \uE000world\uE001", bolded.text)
+        assertEquals(TextRange(12), bolded.selection)
+
+        val unbolded = toggleBoldFormatting(
+            TextFieldValue(bolded.text, selection = TextRange(7, 12))
+        )
+
+        assertEquals("Hello world", unbolded.text)
+        assertEquals(TextRange(6, 11), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_splitsBoldSpanAroundSelectedText() {
+        val value = TextFieldValue("A \uE000hello brave world\uE001 Z", selection = TextRange(9, 14))
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("A \uE000hello \uE001brave\uE000 world\uE001 Z", unbolded.text)
+        assertEquals(TextRange(10, 15), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_removesWholeBoldSpanWhenEntireSpanIsSelected() {
+        val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(6, 12))
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("Hello world", unbolded.text)
+        assertEquals(TextRange(6, 11), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_removesBoldSpanWhenCaretIsAtSpanEnd() {
+        val bolded = toggleBoldFormatting(TextFieldValue("Hello world", selection = TextRange(6, 11)))
+
+        val unbolded = toggleBoldFormatting(
+            TextFieldValue(bolded.text, selection = TextRange(12))
+        )
+
+        assertEquals("Hello world", unbolded.text)
+        assertEquals(TextRange(11), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_removesBoldSpanWhenCaretIsInsideSpan() {
+        val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(9))
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("Hello world", unbolded.text)
+        assertEquals(TextRange(8), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_preservesNestedItalicSpanWhenSelectionCrossesIt() {
+        val value = TextFieldValue("A \uE000ab \uE002cd\uE003 ef\uE001 Z", selection = TextRange(4, 12))
+
+        val unbolded = toggleBoldFormatting(value)
+        val rendered = renderRichTextMarkup(unbolded.text)
+
+        assertEquals("A ab cd ef Z", rendered.text)
+        assertTrue(rendered.spanStyles.none { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    @Test
+    fun toggleBoldFormatting_removesAllBoldFromSelectAllText() {
+        val plainValue = TextFieldValue(
+            "First row\nMiddle row\nLast row",
+            selection = TextRange(0, 29)
+        )
+
+        val bolded = toggleBoldFormatting(plainValue)
+
+        assertEquals("\uE000First row\nMiddle row\nLast row\uE001", bolded.text)
+        assertEquals(TextRange(30), bolded.selection)
+
+        val value = TextFieldValue(bolded.text, selection = TextRange(0, bolded.text.length))
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("First row\nMiddle row\nLast row", unbolded.text)
+        assertEquals(TextRange(0, 29), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_insertsAndRemovesCaretSpan() {
+        val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
+
+        assertEquals("Hello\uE000\uE001", enabled.text)
+        assertEquals(TextRange(6), enabled.selection)
+        assertTrue(isBoldFormattingActive(enabled))
+
+        val disabled = toggleBoldFormatting(enabled)
+
+        assertEquals("Hello", disabled.text)
+        assertEquals(TextRange(5), disabled.selection)
+        assertFalse(isBoldFormattingActive(disabled))
+    }
+
+    @Test
+    fun toggleItalicFormatting_wrapsAndUnwrapsSelectedText() {
+        val selected = TextFieldValue("Hello world", selection = TextRange(6, 11))
+        val italicized = toggleItalicFormatting(selected)
+
+        assertEquals("Hello \uE002world\uE003", italicized.text)
+        assertEquals(TextRange(12), italicized.selection)
+
+        val unitalicized = toggleItalicFormatting(
+            TextFieldValue(italicized.text, selection = TextRange(7, 12))
+        )
+
+        assertEquals("Hello world", unitalicized.text)
+        assertEquals(TextRange(6, 11), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_removesWholeItalicSpanWhenEntireSpanIsSelected() {
+        val value = TextFieldValue("Hello \uE002world\uE003", selection = TextRange(6, 12))
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("Hello world", unitalicized.text)
+        assertEquals(TextRange(6, 11), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_removesItalicSpanWhenCaretIsAtSpanEnd() {
+        val italicized = toggleItalicFormatting(TextFieldValue("Hello world", selection = TextRange(6, 11)))
+
+        val unitalicized = toggleItalicFormatting(
+            TextFieldValue(italicized.text, selection = TextRange(12))
+        )
+
+        assertEquals("Hello world", unitalicized.text)
+        assertEquals(TextRange(11), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_removesItalicSpanWhenCaretIsInsideSpan() {
+        val value = TextFieldValue("Hello \uE002world\uE003", selection = TextRange(9))
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("Hello world", unitalicized.text)
+        assertEquals(TextRange(8), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_preservesNestedBoldSpanWhenSelectionCrossesIt() {
+        val value = TextFieldValue("A \uE002ab \uE000cd\uE001 ef\uE003 Z", selection = TextRange(4, 12))
+
+        val unitalicized = toggleItalicFormatting(value)
+        val rendered = renderRichTextMarkup(unitalicized.text)
+
+        assertEquals("A ab cd ef Z", rendered.text)
+        assertTrue(rendered.spanStyles.none { it.item.fontWeight != null })
+    }
+
+    @Test
+    fun toggleItalicFormatting_insertsAndRemovesCaretSpan() {
+        val enabled = toggleItalicFormatting(TextFieldValue("Hello", selection = TextRange(5)))
+
+        assertEquals("Hello\uE002\uE003", enabled.text)
+        assertEquals(TextRange(6), enabled.selection)
+        assertTrue(isItalicFormattingActive(enabled))
+
+        val disabled = toggleItalicFormatting(enabled)
+
+        assertEquals("Hello", disabled.text)
+        assertEquals(TextRange(5), disabled.selection)
+        assertFalse(isItalicFormattingActive(disabled))
+    }
+
+    @Test
+    fun sanitizeRichTextTyping_preservesNewBoldSpanAtCaret() {
+        val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
+        val sanitized = sanitizeRichTextTyping(enabled)
+
+        assertEquals("Hello\uE000\uE001", sanitized.text)
+        assertEquals(TextRange(6), sanitized.selection)
+    }
+
+    @Test
+    fun sanitizeRichTextTyping_preservesNestedBoldAndItalicSpans() {
+        val value = TextFieldValue("A \uE000bold \uE002italic\uE003 text\uE001 Z", selection = TextRange(23, 23))
+
+        val sanitized = sanitizeRichTextTyping(value)
+
+        assertEquals("A \uE000bold \uE002italic\uE003 text\uE001 Z", sanitized.text)
+        assertEquals(TextRange(23), sanitized.selection)
+    }
+
+    @Test
+    fun collapseEmptyFormattingSpans_removesOnlyEmptyItalicSpanInsideBoldText() {
+        val value = TextFieldValue("A \uE000bold \uE002\uE003 text\uE001", selection = TextRange(0, 15))
+
+        val collapsed = collapseEmptyFormattingSpans(value)
+
+        assertEquals("A \uE000bold  text\uE001", collapsed.text)
+        assertEquals(TextRange(0, 13), collapsed.selection)
+    }
+
+    @Test
+    fun isBoldFormattingActive_returnsTrue_whenCaretIsInsideBoldMarkers() {
+        val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(7))
+
+        assertTrue(isBoldFormattingActive(value))
+    }
+
+    @Test
+    fun isBoldFormattingActive_returnsFalse_whenCaretIsOutsideBoldMarkers() {
+        val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(6))
+
+        assertFalse(isBoldFormattingActive(value))
+    }
+
+    @Test
+    fun isBoldFormattingActive_supportsLegacyBoldTags() {
+        val value = TextFieldValue("Hello [b]world[/b]", selection = TextRange(9))
+
+        assertTrue(isBoldFormattingActive(value))
+    }
+
+    @Test
+    fun isItalicFormattingActive_supportsLegacyItalicTags() {
+        val value = TextFieldValue("Hello [i]world[/i]", selection = TextRange(9))
+
+        assertTrue(isItalicFormattingActive(value))
+    }
+
+    @Test
+    fun richTextFormattingState_detectsBothStylesInNestedText() {
+        val value = TextFieldValue("A \uE000bold \uE002italic\uE003 text\uE001 Z", selection = TextRange(11, 11))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.boldActive)
+        assertTrue(state.italicActive)
+    }
+}
+
