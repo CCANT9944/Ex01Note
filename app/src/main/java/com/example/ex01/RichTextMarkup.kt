@@ -278,17 +278,50 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
             rebuildValue(normalized, newText, TextRange(start - 1))
         } else {
             val enclosingMarkers = findEnclosingFormattingMarkers(raw, start, end, markers)
+                ?: if (start > 0 && raw[start - 1] == markers.closeMarker) {
+                    findEnclosingFormattingMarkers(raw, start - 1, start - 1, markers)
+                } else {
+                    null
+                }
 
             if (enclosingMarkers != null && start > enclosingMarkers.openIndex && start <= enclosingMarkers.closeIndex) {
-                val originalToCleaned = IntArray(raw.length + 1)
-                val cleanedText = removeFormattingMarkers(
-                    raw = raw,
-                    openIndex = enclosingMarkers.openIndex,
-                    closeIndex = enclosingMarkers.closeIndex,
-                    originalToCleaned = originalToCleaned
-                )
+                val contentStart = enclosingMarkers.openIndex + 1
+                val shouldSplitAtWhitespaceBoundary = start > contentStart && raw[start - 1].isWhitespace()
 
-                rebuildValue(normalized, cleanedText, TextRange(originalToCleaned[start]))
+                if (shouldSplitAtWhitespaceBoundary) {
+                    var splitIndex = start
+                    while (splitIndex > contentStart && raw[splitIndex - 1].isWhitespace()) {
+                        splitIndex--
+                    }
+
+                    val formattedBefore = raw.substring(contentStart, splitIndex)
+                    val plainAfter = raw.substring(splitIndex, enclosingMarkers.closeIndex)
+                    val prefix = raw.substring(0, enclosingMarkers.openIndex)
+                    val suffix = raw.substring(enclosingMarkers.closeIndex + 1)
+                    val rebuilt = buildString(raw.length + 4) {
+                        append(prefix)
+                        if (formattedBefore.isNotEmpty()) {
+                            append(markers.openMarker)
+                            append(formattedBefore)
+                            append(markers.closeMarker)
+                        }
+                        append(plainAfter)
+                        append(suffix)
+                    }
+
+                    rebuildValue(normalized, rebuilt, TextRange(rebuilt.length - suffix.length))
+                } else {
+                    val originalToCleaned = IntArray(raw.length + 1)
+                    val cleanedText = removeFormattingMarkers(
+                        raw = raw,
+                        markers = markers,
+                        startIndex = enclosingMarkers.openIndex,
+                        endIndexInclusive = enclosingMarkers.closeIndex,
+                        originalToCleaned = originalToCleaned
+                    )
+
+                    rebuildValue(normalized, cleanedText, TextRange(originalToCleaned[start]))
+                }
             } else {
                 val newText = buildString(raw.length + 2) {
                     append(raw.substring(0, start))
@@ -313,30 +346,30 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
         if (wrappingMarkers != null) {
             val contentStart = wrappingMarkers.openIndex + 1
             val contentEnd = wrappingMarkers.closeIndex
-            val (safeStart, safeEnd) = expandSelectionAwayFromNestedFormatting(
-                raw = raw,
-                start = start,
-                end = end,
-                outerRange = wrappingMarkers
-            )
+                val selectedVisibleLength = countVisibleRichTextCharacters(raw, start, end)
+                val fullVisibleLength = countVisibleRichTextCharacters(raw, contentStart, contentEnd)
+                val selectionTailHasVisibleCharacters = hasVisibleRichTextCharacters(raw, end, contentEnd)
 
-            if (safeStart <= contentStart && safeEnd >= contentEnd) {
+                if (start <= contentStart &&
+                    (selectedVisibleLength >= fullVisibleLength || !selectionTailHasVisibleCharacters)
+                ) {
                 val originalToCleaned = IntArray(raw.length + 1)
                 val cleaned = removeFormattingMarkers(
                     raw = raw,
-                    openIndex = wrappingMarkers.openIndex,
-                    closeIndex = wrappingMarkers.closeIndex,
+                    markers = markers,
+                    startIndex = wrappingMarkers.openIndex,
+                    endIndexInclusive = wrappingMarkers.closeIndex,
                     originalToCleaned = originalToCleaned
                 )
 
                 rebuildValue(
                     normalized,
                     cleaned,
-                    TextRange(originalToCleaned[safeStart], originalToCleaned[safeEnd])
+                    TextRange(originalToCleaned[start], originalToCleaned[end])
                 )
             } else {
-                val selectedStart = safeStart.coerceIn(contentStart, contentEnd)
-                val selectedEnd = safeEnd.coerceIn(contentStart, contentEnd)
+                val selectedStart = start.coerceIn(contentStart, contentEnd)
+                val selectedEnd = end.coerceIn(contentStart, contentEnd)
                 val beforeFormatted = raw.substring(contentStart, selectedStart)
                 val selectedText = raw.substring(selectedStart, selectedEnd)
                 val afterFormatted = raw.substring(selectedEnd, contentEnd)
@@ -371,6 +404,43 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
     }
 }
 
+
+private fun previousVisibleCharacterBefore(raw: String, offset: Int): Char? {
+    var index = offset - 1
+    while (index >= 0) {
+        when (raw[index]) {
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> index--
+            else -> return raw[index]
+        }
+    }
+    return null
+}
+
+private fun findTrailingWhitespaceSplitIndex(
+    raw: String,
+    contentStart: Int,
+    contentEndExclusive: Int
+): Int? {
+    var index = contentEndExclusive - 1
+    var seenWhitespace = false
+
+    while (index >= contentStart) {
+        when (raw[index]) {
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> index--
+            else -> {
+                if (raw[index].isWhitespace()) {
+                    seenWhitespace = true
+                    index--
+                } else {
+                    return if (seenWhitespace) index + 1 else null
+                }
+            }
+        }
+    }
+
+    return if (seenWhitespace) contentStart else null
+}
+
 private fun stripFormattingMarkers(
     raw: String,
     markers: FormattingMarkerPair,
@@ -396,16 +466,23 @@ private fun stripFormattingMarkers(
 
 private fun removeFormattingMarkers(
     raw: String,
-    openIndex: Int,
-    closeIndex: Int,
+    markers: FormattingMarkerPair,
+    startIndex: Int,
+    endIndexInclusive: Int,
     originalToCleaned: IntArray? = null
 ): String {
     val cleaned = StringBuilder(raw.length - 2)
     var cleanedIndex = 0
+    val normalizedStart = startIndex.coerceAtLeast(0)
+    val normalizedEnd = endIndexInclusive.coerceAtMost(raw.lastIndex)
 
     for (index in raw.indices) {
         originalToCleaned?.let { if (index < it.size) it[index] = cleanedIndex }
-        if (index == openIndex || index == closeIndex) continue
+        if (index in normalizedStart..normalizedEnd &&
+            (raw[index] == markers.openMarker || raw[index] == markers.closeMarker)
+        ) {
+            continue
+        }
 
         cleaned.append(raw[index])
         cleanedIndex++
@@ -413,6 +490,35 @@ private fun removeFormattingMarkers(
 
     originalToCleaned?.let { if (raw.length < it.size) it[raw.length] = cleanedIndex }
     return cleaned.toString()
+}
+
+private fun countVisibleRichTextCharacters(raw: String, startIndex: Int, endIndexExclusive: Int): Int {
+    var count = 0
+    val start = startIndex.coerceIn(0, raw.length)
+    val end = endIndexExclusive.coerceIn(start, raw.length)
+
+    for (index in start until end) {
+        when (raw[index]) {
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> Unit
+            else -> count++
+        }
+    }
+
+    return count
+}
+
+private fun hasVisibleRichTextCharacters(raw: String, startIndex: Int, endIndexExclusive: Int): Boolean {
+    val start = startIndex.coerceIn(0, raw.length)
+    val end = endIndexExclusive.coerceIn(start, raw.length)
+
+    for (index in start until end) {
+        when (raw[index]) {
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> Unit
+            else -> return true
+        }
+    }
+
+    return false
 }
 
 private data class FormattingMarkerRange(
@@ -905,6 +1011,8 @@ private fun richTextTransform(raw: String): TransformedText {
     val transformedToOriginal = mutableListOf<Int>()
 
     fun currentStyle(): SpanStyle = SpanStyle(
+        fontWeight = if (boldDepth.isNotEmpty()) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (italicDepth.isNotEmpty()) FontStyle.Italic else FontStyle.Normal,
         color = colors.lastOrNull() ?: Color.Unspecified,
         background = highlights.lastOrNull() ?: Color.Unspecified
     )

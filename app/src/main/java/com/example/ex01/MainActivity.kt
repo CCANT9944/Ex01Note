@@ -63,6 +63,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ex01.ui.theme.Ex01Theme
+import com.example.ex01.NoteWritingToolbar
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -872,28 +873,16 @@ fun FolderDetailScreen(
 
 @Composable
 private fun RichTextBodyEditor(
-    initialText: String,
-    onTextChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var bodyValue by remember {
-        mutableStateOf(TextFieldValue(initialText, selection = TextRange(initialText.length)))
-    }
-
-    LaunchedEffect(initialText) {
-        if (bodyValue.text != initialText) {
-            bodyValue = TextFieldValue(initialText, selection = TextRange(initialText.length))
-        }
-    }
-
     Column(modifier = modifier) {
 
         BasicTextField(
-            value = bodyValue,
-            onValueChange = { next ->
-                bodyValue = next
-                onTextChange(next.text)
-            },
+            value = value,
+            onValueChange = onValueChange,
+            visualTransformation = richTextVisualTransformation(),
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -902,7 +891,7 @@ private fun RichTextBodyEditor(
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxSize()) {
-                    if (bodyValue.text.isBlank()) {
+                    if (value.text.isBlank()) {
                         Text(
                             text = "Write your note",
                             style = MaterialTheme.typography.bodyLarge,
@@ -928,7 +917,7 @@ fun NoteEditScreen(
     var noteResolved by remember(noteId) { mutableStateOf(false) }
     
     var noteTitle by remember { mutableStateOf("") }
-    val noteBodyDraft = remember(note?.id) { mutableStateOf("") }
+    var noteBodyDraft by remember(noteId) { mutableStateOf(TextFieldValue("")) }
     var newItemText by remember { mutableStateOf(TextFieldValue("")) }
     val addItemFocusRequester = remember { FocusRequester() }
     val bodyFocusRequester = remember { FocusRequester() }
@@ -962,16 +951,16 @@ fun NoteEditScreen(
         note?.let {
             noteResolved = true
             noteTitle = it.title
-            noteBodyDraft.value = if (showBodyEditor) {
+            noteBodyDraft = if (showBodyEditor) {
                 withContext(Dispatchers.Default) {
                     collapseEmptyFormattingSpans(
                         normalizeRichTextMarkup(
                             TextFieldValue(it.body, selection = TextRange(it.body.length))
                         )
-                    ).text
+                    )
                 }
             } else {
-                it.body
+                TextFieldValue(it.body, selection = TextRange(it.body.length))
             }
         }
 
@@ -997,7 +986,7 @@ fun NoteEditScreen(
                     withContext(Dispatchers.Default) {
                         collapseEmptyFormattingSpans(
                             normalizeRichTextMarkup(
-                                TextFieldValue(noteBodyDraft.value, selection = TextRange(noteBodyDraft.value.length))
+                                noteBodyDraft
                             ),
                             preserveCollapsedSelectionSpan = false
                         ).text
@@ -1072,9 +1061,22 @@ fun NoteEditScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (showBodyEditor) {
+                NoteWritingToolbar(
+                    value = noteBodyDraft,
+                    onBoldClick = {
+                        noteBodyDraft = toggleBoldFormatting(noteBodyDraft)
+                    },
+                    onItalicClick = {
+                        noteBodyDraft = toggleItalicFormatting(noteBodyDraft)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 RichTextBodyEditor(
-                    initialText = note?.body.orEmpty(),
-                    onTextChange = { noteBodyDraft.value = it },
+                    value = noteBodyDraft,
+                    onValueChange = { next -> noteBodyDraft = next },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)

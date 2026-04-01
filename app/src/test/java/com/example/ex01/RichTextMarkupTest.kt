@@ -4,6 +4,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,6 +38,8 @@ class RichTextMarkupTest {
 
         assertEquals("Hello world", complete.text)
         assertEquals("Hello world", markerBased.text)
+        assertTrue(complete.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(markerBased.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
     }
 
     @Test
@@ -46,6 +49,8 @@ class RichTextMarkupTest {
 
         assertEquals("Hello world", complete.text)
         assertEquals("Hello world", markerBased.text)
+        assertTrue(complete.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+        assertTrue(markerBased.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
 
     @Test
@@ -156,6 +161,58 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleBoldFormatting_onlyUnboldsLastRowInThreeRowSelection() {
+        val value = TextFieldValue(
+            "\uE000First row\nMiddle row\nLast row\uE001",
+            selection = TextRange(22, 30)
+        )
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("\uE000First row\nMiddle row\n\uE001Last row", unbolded.text)
+        assertEquals(TextRange(23, 31), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_onlyUnboldsLastRowInThreeRowReversedSelection() {
+        val value = TextFieldValue(
+            "\uE000First row\nMiddle row\nLast row\uE001",
+            selection = TextRange(30, 22)
+        )
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("\uE000First row\nMiddle row\n\uE001Last row", unbolded.text)
+        assertEquals(TextRange(23, 31), unbolded.selection)
+    }
+
+    @Test
+    fun toggleBoldFormatting_unboldsAllWhenFullSelectionIncludesNestedBoldLastWord() {
+        val value = TextFieldValue(
+            "\uE000First row\nMiddle row\n\uE000Last row\uE001\uE001",
+            selection = TextRange(0, 32)
+        )
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("First row\nMiddle row\nLast row", unbolded.text)
+        assertEquals(TextRange(0, 29), unbolded.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_unitalicizesAllWhenFullSelectionIncludesNestedItalicLastWord() {
+        val value = TextFieldValue(
+            "\uE002First row\nMiddle row\n\uE002Last row\uE003\uE003",
+            selection = TextRange(0, 32)
+        )
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("First row\nMiddle row\nLast row", unitalicized.text)
+        assertEquals(TextRange(0, 29), unitalicized.selection)
+    }
+
+    @Test
     fun toggleBoldFormatting_removesWholeBoldSpanWhenEntireSpanIsSelected() {
         val value = TextFieldValue("Hello \uE000world\uE001", selection = TextRange(6, 12))
 
@@ -195,7 +252,7 @@ class RichTextMarkupTest {
         val rendered = renderRichTextMarkup(unbolded.text)
 
         assertEquals("A ab cd ef Z", rendered.text)
-        assertTrue(rendered.spanStyles.none { it.item.fontStyle == FontStyle.Italic })
+        assertTrue(rendered.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
 
     @Test
@@ -250,6 +307,32 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleItalicFormatting_onlyUnitalicizesLastRowInThreeRowSelection() {
+        val value = TextFieldValue(
+            "\uE002First row\nMiddle row\nLast row\uE003",
+            selection = TextRange(22, 30)
+        )
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("\uE002First row\nMiddle row\n\uE003Last row", unitalicized.text)
+        assertEquals(TextRange(23, 31), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleItalicFormatting_onlyUnitalicizesLastRowInThreeRowReversedSelection() {
+        val value = TextFieldValue(
+            "\uE002First row\nMiddle row\nLast row\uE003",
+            selection = TextRange(30, 22)
+        )
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("\uE002First row\nMiddle row\n\uE003Last row", unitalicized.text)
+        assertEquals(TextRange(23, 31), unitalicized.selection)
+    }
+
+    @Test
     fun toggleItalicFormatting_removesWholeItalicSpanWhenEntireSpanIsSelected() {
         val value = TextFieldValue("Hello \uE002world\uE003", selection = TextRange(6, 12))
 
@@ -282,6 +365,28 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleBoldFormatting_afterTypedSpace_keepsPreviousWordBold() {
+        val value = TextFieldValue("A \uE000word \uE001", selection = TextRange(8))
+
+        val unbolded = toggleBoldFormatting(value)
+
+        assertEquals("A \uE000word\uE001 ", unbolded.text)
+        assertEquals(TextRange(9), unbolded.selection)
+        assertTrue(isBoldFormattingActive(TextFieldValue(unbolded.text, selection = TextRange(4))))
+    }
+
+    @Test
+    fun toggleItalicFormatting_afterTypedSpace_keepsPreviousWordItalic() {
+        val value = TextFieldValue("A \uE002word \uE003", selection = TextRange(8))
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("A \uE002word\uE003 ", unitalicized.text)
+        assertEquals(TextRange(9), unitalicized.selection)
+        assertTrue(isItalicFormattingActive(TextFieldValue(unitalicized.text, selection = TextRange(4))))
+    }
+
+    @Test
     fun toggleItalicFormatting_preservesNestedBoldSpanWhenSelectionCrossesIt() {
         val value = TextFieldValue("A \uE002ab \uE000cd\uE001 ef\uE003 Z", selection = TextRange(4, 12))
 
@@ -289,7 +394,7 @@ class RichTextMarkupTest {
         val rendered = renderRichTextMarkup(unitalicized.text)
 
         assertEquals("A ab cd ef Z", rendered.text)
-        assertTrue(rendered.spanStyles.none { it.item.fontWeight != null })
+        assertTrue(rendered.spanStyles.any { it.item.fontWeight != null })
     }
 
     @Test
@@ -305,6 +410,16 @@ class RichTextMarkupTest {
         assertEquals("Hello", disabled.text)
         assertEquals(TextRange(5), disabled.selection)
         assertFalse(isItalicFormattingActive(disabled))
+    }
+
+    @Test
+    fun toggleItalicFormatting_atPlainTextEnd_doesNotRemovePreviousItalicSpan() {
+        val value = TextFieldValue("A \uE002italic\uE003 plain", selection = TextRange("A \uE002italic\uE003 plain".length))
+
+        val toggled = toggleItalicFormatting(value)
+
+        assertEquals("A \uE002italic\uE003 plain\uE002\uE003", toggled.text)
+        assertEquals(TextRange(value.text.length + 1), toggled.selection)
     }
 
     @Test
