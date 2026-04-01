@@ -905,6 +905,7 @@ private fun RichTextBodyEditor(
     }
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NoteEditScreen(
@@ -917,7 +918,7 @@ fun NoteEditScreen(
     var noteResolved by remember(noteId) { mutableStateOf(false) }
     
     var noteTitle by remember { mutableStateOf("") }
-    var noteBodyDraft by remember(noteId) { mutableStateOf(TextFieldValue("")) }
+    val richTextController = rememberRichTextEditorController(TextFieldValue(""))
     var newItemText by remember { mutableStateOf(TextFieldValue("")) }
     val addItemFocusRequester = remember { FocusRequester() }
     val bodyFocusRequester = remember { FocusRequester() }
@@ -951,7 +952,7 @@ fun NoteEditScreen(
         note?.let {
             noteResolved = true
             noteTitle = it.title
-            noteBodyDraft = if (showBodyEditor) {
+            val loadedBody = if (showBodyEditor) {
                 withContext(Dispatchers.Default) {
                     collapseEmptyFormattingSpans(
                         normalizeRichTextMarkup(
@@ -961,6 +962,10 @@ fun NoteEditScreen(
                 }
             } else {
                 TextFieldValue(it.body, selection = TextRange(it.body.length))
+            }
+
+            if (showBodyEditor) {
+                richTextController.updateValue(loadedBody)
             }
         }
 
@@ -986,7 +991,7 @@ fun NoteEditScreen(
                     withContext(Dispatchers.Default) {
                         collapseEmptyFormattingSpans(
                             normalizeRichTextMarkup(
-                                noteBodyDraft
+                                richTextController.value
                             ),
                             preserveCollapsedSelectionSpan = false
                         ).text
@@ -1042,6 +1047,18 @@ fun NoteEditScreen(
                 .padding(horizontal = 16.dp)
                 .imePadding()
         ) {
+            if (showBodyEditor) {
+                NoteWritingToolbar(
+                    value = richTextController.value,
+                    onBoldClick = richTextController::toggleBold,
+                    onItalicClick = richTextController::toggleItalic,
+                    onUnderlineClick = richTextController::toggleUnderline,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             TextField(
                 value = noteTitle,
                 onValueChange = { noteTitle = it },
@@ -1061,22 +1078,10 @@ fun NoteEditScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (showBodyEditor) {
-                NoteWritingToolbar(
-                    value = noteBodyDraft,
-                    onBoldClick = {
-                        noteBodyDraft = toggleBoldFormatting(noteBodyDraft)
-                    },
-                    onItalicClick = {
-                        noteBodyDraft = toggleItalicFormatting(noteBodyDraft)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 RichTextBodyEditor(
-                    value = noteBodyDraft,
-                    onValueChange = { next -> noteBodyDraft = next },
+                    value = richTextController.value,
+                    onValueChange = { next -> richTextController.updateValue(next) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)

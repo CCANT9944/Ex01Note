@@ -5,6 +5,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -51,6 +52,17 @@ class RichTextMarkupTest {
         assertEquals("Hello world", markerBased.text)
         assertTrue(complete.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
         assertTrue(markerBased.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    @Test
+    fun renderRichTextMarkup_hidesMarkersAndLegacyUnderlineTags() {
+        val complete = renderRichTextMarkup("Hello [u]world[/u]")
+        val markerBased = renderRichTextMarkup("Hello \uE004world\uE005")
+
+        assertEquals("Hello world", complete.text)
+        assertEquals("Hello world", markerBased.text)
+        assertTrue(complete.spanStyles.any { it.item.textDecoration == TextDecoration.Underline })
+        assertTrue(markerBased.spanStyles.any { it.item.textDecoration == TextDecoration.Underline })
     }
 
     @Test
@@ -276,6 +288,71 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleItalicFormatting_removesAllItalicFromSelectAllText() {
+        val plainValue = TextFieldValue(
+            "First row\nMiddle row\nLast row",
+            selection = TextRange(0, 29)
+        )
+
+        val italicized = toggleItalicFormatting(plainValue)
+
+        assertEquals("\uE002First row\nMiddle row\nLast row\uE003", italicized.text)
+        assertEquals(TextRange(30), italicized.selection)
+
+        val value = TextFieldValue(italicized.text, selection = TextRange(0, italicized.text.length))
+
+        val unitalicized = toggleItalicFormatting(value)
+
+        assertEquals("First row\nMiddle row\nLast row", unitalicized.text)
+        assertEquals(TextRange(0, 29), unitalicized.selection)
+    }
+
+    @Test
+    fun toggleUnderlineFormatting_removesAllUnderlineFromSelectAllText() {
+        val plainValue = TextFieldValue(
+            "First row\nMiddle row\nLast row",
+            selection = TextRange(0, 29)
+        )
+
+        val underlined = toggleUnderlineFormatting(plainValue)
+
+        assertEquals("\uE004First row\nMiddle row\nLast row\uE005", underlined.text)
+        assertEquals(TextRange(30), underlined.selection)
+
+        val value = TextFieldValue(underlined.text, selection = TextRange(0, underlined.text.length))
+
+        val ununderlined = toggleUnderlineFormatting(value)
+
+        assertEquals("First row\nMiddle row\nLast row", ununderlined.text)
+        assertEquals(TextRange(0, 29), ununderlined.selection)
+    }
+
+    @Test
+    fun toggleUnderlineFormatting_removesWholeUnderlineSpanWhenEntireSpanIsSelected() {
+        val value = TextFieldValue("Hello \uE004world\uE005", selection = TextRange(6, 12))
+
+        val ununderlined = toggleUnderlineFormatting(value)
+
+        assertEquals("Hello world", ununderlined.text)
+        assertEquals(TextRange(6, 11), ununderlined.selection)
+    }
+
+    @Test
+    fun toggleUnderlineFormatting_insertsAndRemovesCaretSpan() {
+        val enabled = toggleUnderlineFormatting(TextFieldValue("Hello", selection = TextRange(5)))
+
+        assertEquals("Hello\uE004\uE005", enabled.text)
+        assertEquals(TextRange(6), enabled.selection)
+        assertTrue(isUnderlineFormattingActive(enabled))
+
+        val disabled = toggleUnderlineFormatting(enabled)
+
+        assertEquals("Hello", disabled.text)
+        assertEquals(TextRange(5), disabled.selection)
+        assertFalse(isUnderlineFormattingActive(disabled))
+    }
+
+    @Test
     fun toggleBoldFormatting_insertsAndRemovesCaretSpan() {
         val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
 
@@ -423,6 +500,22 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleUnderlineFormatting_wrapsAndUnwrapsSelectedText() {
+        val selected = TextFieldValue("Hello world", selection = TextRange(6, 11))
+        val underlined = toggleUnderlineFormatting(selected)
+
+        assertEquals("Hello \uE004world\uE005", underlined.text)
+        assertEquals(TextRange(12), underlined.selection)
+
+        val ununderlined = toggleUnderlineFormatting(
+            TextFieldValue(underlined.text, selection = TextRange(7, 12))
+        )
+
+        assertEquals("Hello world", ununderlined.text)
+        assertEquals(TextRange(6, 11), ununderlined.selection)
+    }
+
+    @Test
     fun sanitizeRichTextTyping_preservesNewBoldSpanAtCaret() {
         val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
         val sanitized = sanitizeRichTextTyping(enabled)
@@ -487,6 +580,95 @@ class RichTextMarkupTest {
 
         assertTrue(state.boldActive)
         assertTrue(state.italicActive)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsBothStylesAcrossSelectionRange() {
+        val value = TextFieldValue("A \uE000bold \uE002italic\uE003 text\uE001 Z", selection = TextRange(2, 21))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.boldActive)
+        assertTrue(state.italicActive)
+    }
+
+    @Test
+    fun renderRichTextMarkup_preservesBoldAndUnderlineTogether() {
+        val rendered = renderRichTextMarkup("A \uE000bold \uE004under\uE005 text\uE001 Z")
+
+        assertEquals("A bold under text Z", rendered.text)
+        assertTrue(rendered.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(rendered.spanStyles.any { it.item.textDecoration == TextDecoration.Underline })
+    }
+
+    @Test
+    fun renderRichTextMarkup_preservesBoldAndItalicTogether() {
+        val rendered = renderRichTextMarkup("A \uE000bold \uE002italic\uE003 text\uE001 Z")
+
+        assertEquals("A bold italic text Z", rendered.text)
+        assertTrue(rendered.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(rendered.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+    }
+
+    @Test
+    fun renderRichTextMarkup_preservesItalicAndUnderlineTogether() {
+        val rendered = renderRichTextMarkup("A \uE002italic \uE004under\uE005 text\uE003 Z")
+
+        assertEquals("A italic under text Z", rendered.text)
+        assertTrue(rendered.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+        assertTrue(rendered.spanStyles.any { it.item.textDecoration == TextDecoration.Underline })
+    }
+
+    @Test
+    fun renderRichTextMarkup_preservesBoldItalicAndUnderlineTogether() {
+        val rendered = renderRichTextMarkup("A \uE000bold \uE002italic \uE004under\uE005\uE003 text\uE001 Z")
+
+        assertEquals("A bold italic under text Z", rendered.text)
+        assertTrue(rendered.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(rendered.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
+        assertTrue(rendered.spanStyles.any { it.item.textDecoration == TextDecoration.Underline })
+    }
+
+    @Test
+    fun richTextFormattingState_detectsUnderlineInSelectionRange() {
+        val value = TextFieldValue("A \uE004underlined\uE005 text", selection = TextRange(2, 12))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.underlineActive)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsBoldAndItalicAtEndOfNestedSpan() {
+        val raw = "A \uE000bold \uE002italic\uE003 text\uE001 Z"
+        val caretAtNestedSpanEnd = raw.indexOf('\uE003')
+        val value = TextFieldValue(raw, selection = TextRange(caretAtNestedSpanEnd))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.boldActive)
+        assertTrue(state.italicActive)
+    }
+
+    @Test
+    fun isUnderlineFormattingActive_returnsTrue_whenSelectionCrossesUnderlineSpan() {
+        val value = TextFieldValue("Start \uE004under\uE005 end", selection = TextRange(5, 10))
+
+        assertTrue(isUnderlineFormattingActive(value))
+    }
+
+    @Test
+    fun isBoldFormattingActive_returnsTrue_whenSelectionCrossesBoldSpan() {
+        val value = TextFieldValue("Start \uE000bold\uE001 end", selection = TextRange(5, 10))
+
+        assertTrue(isBoldFormattingActive(value))
+    }
+
+    @Test
+    fun isItalicFormattingActive_returnsTrue_whenSelectionCrossesItalicSpan() {
+        val value = TextFieldValue("Start \uE002ital\uE003 end", selection = TextRange(5, 10))
+
+        assertTrue(isItalicFormattingActive(value))
     }
 }
 

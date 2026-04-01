@@ -10,10 +10,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.core.graphics.toColorInt
 
 private val richTextTagRegex = Regex(
-    pattern = """\[(/?)(b|i|size|font|color|hl)(?:=([^]]+))?]""",
+    pattern = """\[(/?)(b|i|u|size|font|color|hl)(?:=([^]]+))?]""",
     options = setOf(RegexOption.IGNORE_CASE)
 )
 
@@ -21,6 +22,8 @@ const val BOLD_OPEN_MARKER: Char = '\uE000'
 const val BOLD_CLOSE_MARKER: Char = '\uE001'
 const val ITALIC_OPEN_MARKER: Char = '\uE002'
 const val ITALIC_CLOSE_MARKER: Char = '\uE003'
+const val UNDERLINE_OPEN_MARKER: Char = '\uE004'
+const val UNDERLINE_CLOSE_MARKER: Char = '\uE005'
 
 data class FormattingMarkerPair(
     val openMarker: Char,
@@ -30,6 +33,7 @@ data class FormattingMarkerPair(
 
 private val BOLD_MARKERS = FormattingMarkerPair(BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, "b")
 private val ITALIC_MARKERS = FormattingMarkerPair(ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER, "i")
+private val UNDERLINE_MARKERS = FormattingMarkerPair(UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER, "u")
 
 private data class RichTextTagToken(
     val endExclusive: Int,
@@ -54,6 +58,8 @@ private fun isPartialRichTextTagPrefix(candidate: String): Boolean {
         lower == "[i" ||
         lower == "[/i" ||
         lower == "[size" ||
+        lower == "[u" ||
+        lower == "[/u" ||
         lower == "[/size" ||
         lower == "[font" ||
         lower == "[/font" ||
@@ -65,6 +71,8 @@ private fun isPartialRichTextTagPrefix(candidate: String): Boolean {
         lower.startsWith("[/size=") ||
         lower.startsWith("[i=") ||
         lower.startsWith("[/i=") ||
+        lower.startsWith("[u=") ||
+        lower.startsWith("[/u=") ||
         lower.startsWith("[font=") ||
         lower.startsWith("[/font=") ||
         lower.startsWith("[color=") ||
@@ -131,7 +139,7 @@ fun collapseEmptyBoldSpans(
 
 fun collapseEmptyFormattingSpans(
     value: TextFieldValue,
-    markerPairs: List<FormattingMarkerPair> = listOf(BOLD_MARKERS, ITALIC_MARKERS),
+    markerPairs: List<FormattingMarkerPair> = listOf(BOLD_MARKERS, ITALIC_MARKERS, UNDERLINE_MARKERS),
     preserveCollapsedSelectionSpan: Boolean = true
 ): TextFieldValue {
     val raw = value.text
@@ -207,7 +215,8 @@ fun normalizeRichTextMarkup(value: TextFieldValue): TextFieldValue {
         val current = raw[rawIndex]
 
         if (current == BOLD_OPEN_MARKER || current == BOLD_CLOSE_MARKER ||
-            current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER
+            current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER ||
+            current == UNDERLINE_OPEN_MARKER || current == UNDERLINE_CLOSE_MARKER
         ) {
             originalToCleaned[rawIndex] = cleanedIndex
             cleaned.append(current)
@@ -227,6 +236,9 @@ fun normalizeRichTextMarkup(value: TextFieldValue): TextFieldValue {
                 cleanedIndex++
             } else if (token.isComplete && token.tag == "i") {
                 cleaned.append(if (token.isClosing) ITALIC_CLOSE_MARKER else ITALIC_OPEN_MARKER)
+                cleanedIndex++
+            } else if (token.isComplete && token.tag == "u") {
+                cleaned.append(if (token.isClosing) UNDERLINE_CLOSE_MARKER else UNDERLINE_OPEN_MARKER)
                 cleanedIndex++
             }
 
@@ -259,6 +271,8 @@ fun sanitizeRichTextTyping(value: TextFieldValue): TextFieldValue {
 fun toggleBoldFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, BOLD_MARKERS)
 
 fun toggleItalicFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, ITALIC_MARKERS)
+
+fun toggleUnderlineFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, UNDERLINE_MARKERS)
 
 private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPair): TextFieldValue {
     val normalized = normalizeRichTextMarkup(value)
@@ -350,8 +364,8 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
                 val fullVisibleLength = countVisibleRichTextCharacters(raw, contentStart, contentEnd)
                 val selectionTailHasVisibleCharacters = hasVisibleRichTextCharacters(raw, end, contentEnd)
 
-                if (start <= contentStart &&
-                    (selectedVisibleLength >= fullVisibleLength || !selectionTailHasVisibleCharacters)
+                if (selectedVisibleLength >= fullVisibleLength ||
+                    (start <= contentStart && !selectionTailHasVisibleCharacters)
                 ) {
                 val originalToCleaned = IntArray(raw.length + 1)
                 val cleaned = removeFormattingMarkers(
@@ -409,7 +423,9 @@ private fun previousVisibleCharacterBefore(raw: String, offset: Int): Char? {
     var index = offset - 1
     while (index >= 0) {
         when (raw[index]) {
-            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> index--
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
+            ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> index--
             else -> return raw[index]
         }
     }
@@ -426,7 +442,9 @@ private fun findTrailingWhitespaceSplitIndex(
 
     while (index >= contentStart) {
         when (raw[index]) {
-            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> index--
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
+            ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> index--
             else -> {
                 if (raw[index].isWhitespace()) {
                     seenWhitespace = true
@@ -499,7 +517,9 @@ private fun countVisibleRichTextCharacters(raw: String, startIndex: Int, endInde
 
     for (index in start until end) {
         when (raw[index]) {
-            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> Unit
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
+            ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> Unit
             else -> count++
         }
     }
@@ -513,7 +533,9 @@ private fun hasVisibleRichTextCharacters(raw: String, startIndex: Int, endIndexE
 
     for (index in start until end) {
         when (raw[index]) {
-            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER, ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER -> Unit
+            BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
+            ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> Unit
             else -> return true
         }
     }
@@ -539,6 +561,7 @@ private fun collectFormattingSpanRanges(raw: String): List<FormattingSpanRange> 
         when (raw[index]) {
             BOLD_OPEN_MARKER -> openStack.addLast(BOLD_MARKERS to index)
             ITALIC_OPEN_MARKER -> openStack.addLast(ITALIC_MARKERS to index)
+            UNDERLINE_OPEN_MARKER -> openStack.addLast(UNDERLINE_MARKERS to index)
             BOLD_CLOSE_MARKER -> {
                 val openIndex = openStack.indexOfLast { it.first == BOLD_MARKERS }
                 if (openIndex >= 0) {
@@ -548,6 +571,13 @@ private fun collectFormattingSpanRanges(raw: String): List<FormattingSpanRange> 
             }
             ITALIC_CLOSE_MARKER -> {
                 val openIndex = openStack.indexOfLast { it.first == ITALIC_MARKERS }
+                if (openIndex >= 0) {
+                    val open = openStack.removeAt(openIndex)
+                    spans.add(FormattingSpanRange(open.second, index))
+                }
+            }
+            UNDERLINE_CLOSE_MARKER -> {
+                val openIndex = openStack.indexOfLast { it.first == UNDERLINE_MARKERS }
                 if (openIndex >= 0) {
                     val open = openStack.removeAt(openIndex)
                     spans.add(FormattingSpanRange(open.second, index))
@@ -627,81 +657,32 @@ fun isBoldFormattingActive(value: TextFieldValue): Boolean = isFormattingActive(
 
 fun isItalicFormattingActive(value: TextFieldValue): Boolean = isFormattingActive(value, ITALIC_MARKERS)
 
+fun isUnderlineFormattingActive(value: TextFieldValue): Boolean = isFormattingActive(value, UNDERLINE_MARKERS)
+
 data class RichTextFormattingState(
     val boldActive: Boolean,
-    val italicActive: Boolean
+    val italicActive: Boolean,
+    val underlineActive: Boolean
 )
 
-fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
-    val raw = value.text
-    if (raw.isEmpty()) return RichTextFormattingState(false, false)
+private data class RichTextDepth(
+    val boldDepth: Int,
+    val italicDepth: Int,
+    val underlineDepth: Int
+)
 
-    val start = minOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
-    val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
-
-    if (start == end) {
-        fun formattingDepthAtOffset(offset: Int): Pair<Boolean, Boolean> {
-            var boldDepth = 0
-            var italicDepth = 0
-            var rawIndex = 0
-
-            while (rawIndex < offset && rawIndex < raw.length) {
-                when (raw[rawIndex]) {
-                    BOLD_OPEN_MARKER -> {
-                        boldDepth++
-                        rawIndex++
-                    }
-                    BOLD_CLOSE_MARKER -> {
-                        if (boldDepth > 0) boldDepth--
-                        rawIndex++
-                    }
-                    ITALIC_OPEN_MARKER -> {
-                        italicDepth++
-                        rawIndex++
-                    }
-                    ITALIC_CLOSE_MARKER -> {
-                        if (italicDepth > 0) italicDepth--
-                        rawIndex++
-                    }
-                    else -> {
-                        val token = parseRichTextTagToken(raw, rawIndex)
-                        if (token != null) {
-                            if (token.isComplete) {
-                                when (token.tag) {
-                                    "b" -> if (token.isClosing) {
-                                        if (boldDepth > 0) boldDepth--
-                                    } else {
-                                        boldDepth++
-                                    }
-                                    "i" -> if (token.isClosing) {
-                                        if (italicDepth > 0) italicDepth--
-                                    } else {
-                                        italicDepth++
-                                    }
-                                }
-                            }
-                            rawIndex = token.endExclusive
-                        } else {
-                            rawIndex++
-                        }
-                    }
-                }
-            }
-
-            return (boldDepth > 0) to (italicDepth > 0)
-        }
-
-        val (boldActive, italicActive) = formattingDepthAtOffset(start)
-        return RichTextFormattingState(boldActive, italicActive)
-    }
-
+private inline fun scanRichTextFormatting(
+    raw: String,
+    untilExclusive: Int = raw.length,
+    onVisibleCharacter: (index: Int, depth: RichTextDepth) -> Unit = { _, _ -> }
+): RichTextDepth {
     var boldDepth = 0
     var italicDepth = 0
+    var underlineDepth = 0
     var rawIndex = 0
-    var boldActive = false
-    var italicActive = false
+    val limit = untilExclusive.coerceIn(0, raw.length)
 
-    while (rawIndex < raw.length && rawIndex < end) {
+    while (rawIndex < raw.length && rawIndex < limit) {
         when (raw[rawIndex]) {
             BOLD_OPEN_MARKER -> {
                 boldDepth++
@@ -719,6 +700,14 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
                 if (italicDepth > 0) italicDepth--
                 rawIndex++
             }
+            UNDERLINE_OPEN_MARKER -> {
+                underlineDepth++
+                rawIndex++
+            }
+            UNDERLINE_CLOSE_MARKER -> {
+                if (underlineDepth > 0) underlineDepth--
+                rawIndex++
+            }
             else -> {
                 val token = parseRichTextTagToken(raw, rawIndex)
                 if (token != null) {
@@ -734,24 +723,54 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
                             } else {
                                 italicDepth++
                             }
+                            "u" -> if (token.isClosing) {
+                                if (underlineDepth > 0) underlineDepth--
+                            } else {
+                                underlineDepth++
+                            }
                         }
                     }
                     rawIndex = token.endExclusive
                 } else {
-                    if (rawIndex >= start && boldDepth > 0) boldActive = true
-                    if (rawIndex >= start && italicDepth > 0) italicActive = true
+                    onVisibleCharacter(rawIndex, RichTextDepth(boldDepth, italicDepth, underlineDepth))
                     rawIndex++
                 }
             }
         }
+    }
 
-        if (rawIndex >= start && rawIndex < end) {
-            if (boldDepth > 0) boldActive = true
-            if (italicDepth > 0) italicActive = true
+    return RichTextDepth(boldDepth, italicDepth, underlineDepth)
+}
+
+private fun formattingDepthAtOffset(raw: String, offset: Int): RichTextDepth {
+    return scanRichTextFormatting(raw, untilExclusive = offset)
+}
+
+fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
+    val raw = value.text
+    if (raw.isEmpty()) return RichTextFormattingState(false, false, false)
+
+    val start = minOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
+    val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
+
+    if (start == end) {
+        val depth = formattingDepthAtOffset(raw, start)
+        return RichTextFormattingState(depth.boldDepth > 0, depth.italicDepth > 0, depth.underlineDepth > 0)
+    }
+
+    var boldActive = false
+    var italicActive = false
+    var underlineActive = false
+
+    scanRichTextFormatting(raw, untilExclusive = end) { index, depth ->
+        if (index >= start) {
+            if (depth.boldDepth > 0) boldActive = true
+            if (depth.italicDepth > 0) italicActive = true
+            if (depth.underlineDepth > 0) underlineActive = true
         }
     }
 
-    return RichTextFormattingState(boldActive, italicActive)
+    return RichTextFormattingState(boldActive, italicActive, underlineActive)
 }
 
 private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerPair): Boolean {
@@ -761,81 +780,28 @@ private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerP
     val start = minOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
     val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
 
-    fun formattingDepthAtOffset(offset: Int): Boolean {
-        var depth = 0
-        var rawIndex = 0
-
-        while (rawIndex < offset && rawIndex < raw.length) {
-            when (raw[rawIndex]) {
-                markers.openMarker -> {
-                    depth++
-                    rawIndex++
-                }
-                markers.closeMarker -> {
-                    if (depth > 0) depth--
-                    rawIndex++
-                }
-                else -> {
-                    val token = parseRichTextTagToken(raw, rawIndex)
-                    if (token != null) {
-                        if (token.isComplete && token.tag == markers.tagName) {
-                            if (token.isClosing) {
-                                if (depth > 0) depth--
-                            } else {
-                                depth++
-                            }
-                        }
-                        rawIndex = token.endExclusive
-                    } else {
-                        rawIndex++
-                    }
-                }
-            }
-        }
-
-        return depth > 0
-    }
-
     if (start == end) {
-        return formattingDepthAtOffset(start)
-    }
-
-    var depth = 0
-    var rawIndex = 0
-    while (rawIndex < raw.length && rawIndex < end) {
-        when (raw[rawIndex]) {
-            markers.openMarker -> {
-                depth++
-                rawIndex++
-            }
-            markers.closeMarker -> {
-                if (depth > 0) depth--
-                rawIndex++
-            }
-            else -> {
-                val token = parseRichTextTagToken(raw, rawIndex)
-                if (token != null) {
-                    if (token.isComplete && token.tag == markers.tagName) {
-                        if (token.isClosing) {
-                            if (depth > 0) depth--
-                        } else {
-                            depth++
-                        }
-                    }
-                    rawIndex = token.endExclusive
-                } else {
-                    if (rawIndex >= start && depth > 0) return true
-                    rawIndex++
-                }
-            }
-        }
-
-        if (rawIndex >= start && rawIndex < end && depth > 0) {
-            return true
+        val depth = formattingDepthAtOffset(raw, start)
+        return when (markers) {
+            BOLD_MARKERS -> depth.boldDepth > 0
+            ITALIC_MARKERS -> depth.italicDepth > 0
+            UNDERLINE_MARKERS -> depth.underlineDepth > 0
+            else -> false
         }
     }
 
-    return false
+    var active = false
+    scanRichTextFormatting(raw, untilExclusive = end) { index, depth ->
+        if (index >= start) {
+            when (markers) {
+                BOLD_MARKERS -> if (depth.boldDepth > 0) active = true
+                ITALIC_MARKERS -> if (depth.italicDepth > 0) active = true
+                UNDERLINE_MARKERS -> if (depth.underlineDepth > 0) active = true
+            }
+        }
+    }
+
+    return active
 }
 
 fun stripColorAndHighlightMarkup(value: TextFieldValue): TextFieldValue {
@@ -944,7 +910,8 @@ private fun stripRichTextMarkup(raw: String, originalToCleaned: IntArray? = null
     while (rawIndex < raw.length) {
         val current = raw[rawIndex]
         if (current == BOLD_OPEN_MARKER || current == BOLD_CLOSE_MARKER ||
-            current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER
+            current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER ||
+            current == UNDERLINE_OPEN_MARKER || current == UNDERLINE_CLOSE_MARKER
         ) {
             originalToCleaned?.let { if (rawIndex < it.size) it[rawIndex] = cleanedIndex }
             rawIndex++
@@ -957,6 +924,10 @@ private fun stripRichTextMarkup(raw: String, originalToCleaned: IntArray? = null
                 for (index in rawIndex until token.endExclusive.coerceAtMost(it.size)) {
                     it[index] = cleanedIndex
                 }
+            }
+            if (token.isComplete && token.tag == "u") {
+                cleanedText.append(if (token.isClosing) UNDERLINE_CLOSE_MARKER else UNDERLINE_OPEN_MARKER)
+                cleanedIndex++
             }
             rawIndex = token.endExclusive
             continue
@@ -1005,6 +976,7 @@ private fun richTextTransform(raw: String): TransformedText {
     val builder = AnnotatedString.Builder()
     val boldDepth = ArrayDeque<Unit>()
     val italicDepth = ArrayDeque<Unit>()
+    val underlineDepth = ArrayDeque<Unit>()
     val colors = ArrayDeque<Color>()
     val highlights = ArrayDeque<Color>()
     val originalToTransformed = IntArray(raw.length + 1)
@@ -1013,6 +985,7 @@ private fun richTextTransform(raw: String): TransformedText {
     fun currentStyle(): SpanStyle = SpanStyle(
         fontWeight = if (boldDepth.isNotEmpty()) FontWeight.Bold else FontWeight.Normal,
         fontStyle = if (italicDepth.isNotEmpty()) FontStyle.Italic else FontStyle.Normal,
+        textDecoration = if (underlineDepth.isNotEmpty()) TextDecoration.Underline else TextDecoration.None,
         color = colors.lastOrNull() ?: Color.Unspecified,
         background = highlights.lastOrNull() ?: Color.Unspecified
     )
@@ -1045,6 +1018,18 @@ private fun richTextTransform(raw: String): TransformedText {
             rawIndex++
             continue
         }
+        if (current == UNDERLINE_OPEN_MARKER) {
+            originalToTransformed[rawIndex] = visibleIndex
+            underlineDepth.addLast(Unit)
+            rawIndex++
+            continue
+        }
+        if (current == UNDERLINE_CLOSE_MARKER) {
+            originalToTransformed[rawIndex] = visibleIndex
+            if (underlineDepth.isNotEmpty()) underlineDepth.removeLast()
+            rawIndex++
+            continue
+        }
 
         val token = parseRichTextTagToken(raw, rawIndex)
         if (token != null) {
@@ -1066,6 +1051,11 @@ private fun richTextTransform(raw: String): TransformedText {
                         if (italicDepth.isNotEmpty()) italicDepth.removeLast()
                     } else {
                         italicDepth.addLast(Unit)
+                    }
+                    "u" -> if (token.isClosing) {
+                        if (underlineDepth.isNotEmpty()) underlineDepth.removeLast()
+                    } else {
+                        underlineDepth.addLast(Unit)
                     }
                     "color" -> if (token.isClosing) {
                         if (colors.isNotEmpty()) colors.removeLast()
@@ -1102,7 +1092,7 @@ private fun richTextTransform(raw: String): TransformedText {
 
     if (transformedToOriginal.isEmpty()) {
         val firstFormattingOpen = raw.indexOfFirst {
-            it == BOLD_OPEN_MARKER || it == ITALIC_OPEN_MARKER
+            it == BOLD_OPEN_MARKER || it == ITALIC_OPEN_MARKER || it == UNDERLINE_OPEN_MARKER
         }
         transformedToOriginal.add(
             if (firstFormattingOpen >= 0) (firstFormattingOpen + 1).coerceAtMost(raw.length) else raw.length

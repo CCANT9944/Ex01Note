@@ -1,17 +1,31 @@
 # Ex01 Notes App
 
-Ex01 is a personal Android notes app built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
+Ex01 is an Android notes app built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
 
-It supports folders, subfolders, notes, lists, collapsing items, list previews, and basic formatting tools.
+It lets you organize content with folders, subfolders, notes, and lists, then expand or collapse items as needed.
 
-## What it does
+## Screenshot
 
-- Create folders, subfolders, lists, and notes
+![Ex01 Notes App screenshot](docs/images/ex01-notes-app-screenshot.png)
+
+## Features
+
+- Create folders, subfolders, notes, and lists
 - Organize content in a nested folder tree
-- Collapse and expand items
-- Rename, delete, and move items
-- Preview list and note content on the main screen
-- Edit free-text notes and structured lists
+- Collapse and expand folders and items
+- Rename, delete, and move content
+- Preview notes and lists from the main screen
+- Edit free-text notes with rich-text formatting
+
+## Rich-text editor
+
+Free-text notes currently support:
+
+- Bold
+- Italic
+- Underline
+
+Formatting is applied from the in-app toolbar and rendered live inside the editor.
 
 ## Tech stack
 
@@ -24,12 +38,13 @@ It supports folders, subfolders, notes, lists, collapsing items, list previews, 
 
 ## Key files
 
-- `app/src/main/java/com/example/ex01/MainActivity.kt` — app entry point and main UI
+- `app/src/main/java/com/example/ex01/MainActivity.kt` — app entry point and main screens
 - `app/src/main/java/com/example/ex01/NoteViewModel.kt` — app state and actions
 - `app/src/main/java/com/example/ex01/NoteDatabase.kt` — Room entities, DAO, and database
 - `app/src/main/java/com/example/ex01/NoteUi.kt` — reusable UI components
-- `app/src/main/java/com/example/ex01/RichTextMarkup.kt` — text formatting helpers
-- `app/src/main/java/com/example/ex01/NoteWritingToolbar.kt` — note formatting toolbar
+- `app/src/main/java/com/example/ex01/RichTextMarkup.kt` — rich-text parsing and formatting helpers
+- `app/src/main/java/com/example/ex01/RichTextEditorController.kt` — editor state controller
+- `app/src/main/java/com/example/ex01/NoteWritingToolbar.kt` — formatting toolbar
 
 ## Requirements
 
@@ -52,17 +67,14 @@ If you use the deploy script on Windows:
 .\deploy-debug.ps1
 ```
 
-## Backup note
+## Notes
 
-I keep a local restore copy of stable work outside the project folder when needed. That makes it easy to roll back if a change breaks the app.
+- The app is designed for local use and development.
+- The rich-text editor currently focuses on the visible toolbar actions rather than a full document editor feature set.
 
-## Git
+## Roadmap
 
-If you want to save this state to GitHub:
+- Continue refining the rich-text editor behavior and toolbar UX
+- Improve folder, list, and note layout consistency across the app
+- Add more small quality-of-life features as the UI stabilizes
 
-```powershell
-git status
-git add README.md
-git commit -m "Update README"
-git push
-```

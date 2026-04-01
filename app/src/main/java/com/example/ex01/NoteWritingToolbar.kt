@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,6 +28,7 @@ fun NoteWritingToolbar(
     value: TextFieldValue,
     onBoldClick: () -> Unit,
     onItalicClick: () -> Unit,
+    onUnderlineClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val formattingState = richTextFormattingState(value)
@@ -56,6 +58,12 @@ fun NoteWritingToolbar(
                 active = formattingState.italicActive,
                 onClick = onItalicClick,
                 icon = Icons.Filled.FormatItalic
+            )
+            FormattingToolButton(
+                label = "Underline",
+                active = formattingState.underlineActive,
+                onClick = onUnderlineClick,
+                icon = Icons.Filled.FormatUnderlined
             )
             Text(
                 text = "Formatting",
