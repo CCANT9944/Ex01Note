@@ -7,9 +7,29 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+/.idea/markdown.xml
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Root-level local logs and generated exports
+/build_log.txt
+/build-verify.txt
+/build_verify_live.txt
+/deploy-*.txt
+/device_diag.txt
+/java-version.txt
+/jbrfiles.txt
+/jdks.txt
+/latest-assemble.txt
+/migration-build.txt
+/post-fix-deploy.txt
+/test-*.txt
+/ui-build.txt
+
+# Loose local assets accidentally dropped in the repo root
+/*.bmp
+
