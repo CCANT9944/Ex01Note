@@ -1,5 +1,6 @@
 *.iml
-.gradle
+/.gradle/
+/.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -8,12 +9,27 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 /.idea/markdown.xml
+.idea/shelf/
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
-local.properties
+
+# Common generated artifacts
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*.class
+*.dex
+*.apk
+*.aab
+
+# Android Studio / Gradle outputs
+**/build/
+**/out/
 
 # Root-level local logs and generated exports
 /build_log.txt

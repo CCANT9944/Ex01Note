@@ -4,9 +4,6 @@ Ex01 is an Android notes app built with Kotlin, Jetpack Compose, Room, and Navig
 
 It lets you organize content with folders, subfolders, notes, and lists, then expand or collapse items as needed.
 
-## Screenshot
-
-![Ex01 Notes App screenshot](docs/images/ex01-notes-app-screenshot.png)
 
 ## Features
 
