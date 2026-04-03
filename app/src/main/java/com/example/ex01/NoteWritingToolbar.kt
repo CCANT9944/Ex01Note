@@ -12,11 +12,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,22 +29,23 @@ fun NoteWritingToolbar(
     onBoldClick: () -> Unit,
     onItalicClick: () -> Unit,
     onUnderlineClick: () -> Unit,
+    onStrikethroughClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val formattingState = richTextFormattingState(value)
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp)
-                .heightIn(min = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .heightIn(min = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.Start),
             verticalAlignment = Alignment.CenterVertically
         ) {
             FormattingToolButton(
@@ -65,11 +66,11 @@ fun NoteWritingToolbar(
                 onClick = onUnderlineClick,
                 icon = Icons.Filled.FormatUnderlined
             )
-            Text(
-                text = "Formatting",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp)
+            FormattingToolButton(
+                label = "Strike",
+                active = formattingState.strikethroughActive,
+                onClick = onStrikethroughClick,
+                icon = Icons.Filled.FormatStrikethrough
             )
         }
     }
@@ -95,9 +96,9 @@ private fun FormattingToolButton(
 
     Surface(
         modifier = Modifier
-            .size(44.dp)
+            .size(36.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         color = containerColor,
         border = BorderStroke(
             1.dp,
@@ -108,7 +109,8 @@ private fun FormattingToolButton(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = contentColor
+                tint = contentColor,
+                modifier = Modifier.size(16.dp)
             )
         }
     }

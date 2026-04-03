@@ -27,6 +27,10 @@ internal class RichTextEditorController(initialValue: TextFieldValue) {
     fun toggleUnderline() {
         value = toggleUnderlineFormatting(value)
     }
+
+    fun toggleStrikethrough() {
+        value = toggleStrikethroughFormatting(value)
+    }
 }
 
 @Composable

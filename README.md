@@ -1,56 +1,52 @@
 # Ex01 Notes App
 
-Ex01 is an Android notes app built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
+Ex01 is an Android notes app for organizing folders, notes, and lists in one place.
 
-It lets you organize content with folders, subfolders, notes, and lists, then expand or collapse items as needed.
+It is built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
 
+## What you can do
 
-## Features
-
-- Create folders, subfolders, notes, and lists
+- Create folders and subfolders
+- Create notes and lists
 - Organize content in a nested folder tree
-- Collapse and expand folders and items
-- Rename, delete, and move content
+- Expand or collapse folders and items
+- Rename, delete, and move folders, notes, and lists
 - Preview notes and lists from the main screen
-- Edit free-text notes with rich-text formatting
+- Edit free-text notes with live rich-text formatting
 
-## Rich-text editor
+## Rich-text formatting
 
-Free-text notes currently support:
+Free-text notes support:
 
 - Bold
 - Italic
 - Underline
+- Strikethrough
 
-Formatting is applied from the in-app toolbar and rendered live inside the editor.
+Formatting is applied from the toolbar while editing a note.
 
-## Tech stack
+## Theme
 
-- Kotlin
-- Jetpack Compose
-- Material 3
-- Room
-- Navigation Compose
-- Coroutines / Flow
+The app supports a light note view with white backgrounds and black text.
+This keeps notes easy to read and the interface clean.
 
-## Key files
+## How it works
 
-- `app/src/main/java/com/example/ex01/MainActivity.kt` — app entry point and main screens
-- `app/src/main/java/com/example/ex01/NoteViewModel.kt` — app state and actions
-- `app/src/main/java/com/example/ex01/NoteDatabase.kt` — Room entities, DAO, and database
-- `app/src/main/java/com/example/ex01/NoteUi.kt` — reusable UI components
-- `app/src/main/java/com/example/ex01/RichTextMarkup.kt` — rich-text parsing and formatting helpers
-- `app/src/main/java/com/example/ex01/RichTextEditorController.kt` — editor state controller
-- `app/src/main/java/com/example/ex01/NoteWritingToolbar.kt` — formatting toolbar
+- **Folders** help you group related content
+- **Notes** are used for free-text content
+- **Lists** are used for checklist-style content
+- **Preview mode** lets you quickly view note content before opening it
 
-## Requirements
+## Getting started
+
+### Requirements
 
 - Android Studio
 - Android SDK
-- A valid Java installation, or the Android Studio bundled JBR
+- A valid Java installation, or the bundled JBR from Android Studio
 - An Android phone or emulator
 
-## Build and run
+### Build and run
 
 From the project root:
 
@@ -64,14 +60,20 @@ If you use the deploy script on Windows:
 .\deploy-debug.ps1
 ```
 
+or
+
+```powershell
+.\deploy-debug.cmd
+```
+
 ## Notes
 
 - The app is designed for local use and development.
 - The rich-text editor currently focuses on the visible toolbar actions rather than a full document editor feature set.
 
-## Roadmap
+## Project focus
 
-- Continue refining the rich-text editor behavior and toolbar UX
+- Keep the note experience simple and readable
+- Improve the rich-text editor behavior and toolbar UX
 - Improve folder, list, and note layout consistency across the app
-- Add more small quality-of-life features as the UI stabilizes
 

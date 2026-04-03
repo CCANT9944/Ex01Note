@@ -66,6 +66,17 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun renderRichTextMarkup_hidesMarkersAndLegacyStrikeThroughTags() {
+        val complete = renderRichTextMarkup("Hello [strike]world[/strike]")
+        val markerBased = renderRichTextMarkup("Hello \uE006world\uE007")
+
+        assertEquals("Hello world", complete.text)
+        assertEquals("Hello world", markerBased.text)
+        assertTrue(complete.spanStyles.any { it.item.textDecoration?.contains(TextDecoration.LineThrough) == true })
+        assertTrue(markerBased.spanStyles.any { it.item.textDecoration?.contains(TextDecoration.LineThrough) == true })
+    }
+
+    @Test
     fun richTextVisualTransformation_mapsFinalVisibleOffsetToRawEnd() {
         val raw = "First \uE000row\uE001\nLast \uE000row\uE001"
         val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
@@ -353,6 +364,37 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleStrikethroughFormatting_wrapsAndUnwrapsSelectedText() {
+        val selected = TextFieldValue("Hello world", selection = TextRange(6, 11))
+        val striked = toggleStrikethroughFormatting(selected)
+
+        assertEquals("Hello \uE006world\uE007", striked.text)
+        assertEquals(TextRange(12), striked.selection)
+
+        val unstriked = toggleStrikethroughFormatting(
+            TextFieldValue(striked.text, selection = TextRange(7, 12))
+        )
+
+        assertEquals("Hello world", unstriked.text)
+        assertEquals(TextRange(6, 11), unstriked.selection)
+    }
+
+    @Test
+    fun toggleStrikethroughFormatting_insertsAndRemovesCaretSpan() {
+        val enabled = toggleStrikethroughFormatting(TextFieldValue("Hello", selection = TextRange(5)))
+
+        assertEquals("Hello\uE006\uE007", enabled.text)
+        assertEquals(TextRange(6), enabled.selection)
+        assertTrue(isStrikethroughFormattingActive(enabled))
+
+        val disabled = toggleStrikethroughFormatting(enabled)
+
+        assertEquals("Hello", disabled.text)
+        assertEquals(TextRange(5), disabled.selection)
+        assertFalse(isStrikethroughFormattingActive(disabled))
+    }
+
+    @Test
     fun toggleBoldFormatting_insertsAndRemovesCaretSpan() {
         val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
 
@@ -630,12 +672,32 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun renderRichTextMarkup_preservesUnderlineAndStrikeThroughTogether() {
+        val rendered = renderRichTextMarkup("A \uE004\uE006both\uE007\uE005 Z")
+
+        assertEquals("A both Z", rendered.text)
+        assertTrue(rendered.spanStyles.any {
+            it.item.textDecoration?.contains(TextDecoration.Underline) == true &&
+                it.item.textDecoration?.contains(TextDecoration.LineThrough) == true
+        })
+    }
+
+    @Test
     fun richTextFormattingState_detectsUnderlineInSelectionRange() {
         val value = TextFieldValue("A \uE004underlined\uE005 text", selection = TextRange(2, 12))
 
         val state = richTextFormattingState(value)
 
         assertTrue(state.underlineActive)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsStrikeThroughInSelectionRange() {
+        val value = TextFieldValue("A \uE006struck\uE007 text", selection = TextRange(2, 9))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.strikethroughActive)
     }
 
     @Test
@@ -669,6 +731,13 @@ class RichTextMarkupTest {
         val value = TextFieldValue("Start \uE002ital\uE003 end", selection = TextRange(5, 10))
 
         assertTrue(isItalicFormattingActive(value))
+    }
+
+    @Test
+    fun isStrikethroughFormattingActive_returnsTrue_whenSelectionCrossesStrikeThroughSpan() {
+        val value = TextFieldValue("Start \uE006strike\uE007 end", selection = TextRange(5, 11))
+
+        assertTrue(isStrikethroughFormattingActive(value))
     }
 }
 
