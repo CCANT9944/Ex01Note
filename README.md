@@ -25,10 +25,6 @@ Free-text notes support:
 
 Formatting is applied from the toolbar while editing a note.
 
-## Theme
-
-The app supports a light note view with white backgrounds and black text.
-This keeps notes easy to read and the interface clean.
 
 ## How it works
 
