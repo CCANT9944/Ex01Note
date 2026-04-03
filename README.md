@@ -1,15 +1,23 @@
-# Ex01 Notes App
+# ex01 Notes App
 
-Ex01 is an Android notes app for organizing folders, notes, and lists in one place.
+ex01 is a simple Android notes app for organizing folders, notes, and lists in one place.
 
 It is built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
 
-## What you can do
+## What’s new
+
+- Added a Home settings button with a compact bottom-sheet style settings view
+- Added light/dark theme switching from settings
+- Added autosave when the app is backgrounded or dismissed from the app switcher
+- Improved folder visuals in light mode so the containers look cleaner and easier to read
+- Kept the app’s edge-to-edge layout, while fixing status bar icon visibility in light mode
+
+## Main features
 
 - Create folders and subfolders
-- Create notes and lists
+- Create free-text notes and checklist-style lists
 - Organize content in a nested folder tree
-- Expand or collapse folders and items
+- Expand or collapse folders and note previews
 - Rename, delete, and move folders, notes, and lists
 - Preview notes and lists from the main screen
 - Edit free-text notes with live rich-text formatting
@@ -25,13 +33,25 @@ Free-text notes support:
 
 Formatting is applied from the toolbar while editing a note.
 
+<<<<<<< HEAD
+=======
+## Notes and layout
 
-## How it works
+- Folders group related notes and lists together
+- Notes are used for free-text content
+- Lists are used for checklist-style content
+- The main screen shows folder cards and note cards with quick actions
+- The editor saves your draft when you leave the app, so you do not lose recent changes
 
-- **Folders** help you group related content
-- **Notes** are used for free-text content
-- **Lists** are used for checklist-style content
-- **Preview mode** lets you quickly view note content before opening it
+## Theme
+
+The app supports two theme modes:
+>>>>>>> 4b5d84c (Polish notes app UI and README)
+
+- Light
+- Dark
+
+Theme mode can be changed from the settings sheet on the Home screen.
 
 ## Getting started
 
@@ -50,26 +70,27 @@ From the project root:
 .\gradlew.bat assembleDebug --no-daemon
 ```
 
-If you use the deploy script on Windows:
+If you want to deploy from Windows, you can use:
 
 ```powershell
 .\deploy-debug.ps1
 ```
 
-or
+or:
 
 ```powershell
 .\deploy-debug.cmd
 ```
 
-## Notes
+## Project details
+
+- App name: `ex01`
+- Package / namespace: `com.example.ex01`
+- Minimum Android version: API 30
+
+## Development notes
 
 - The app is designed for local use and development.
-- The rich-text editor currently focuses on the visible toolbar actions rather than a full document editor feature set.
-
-## Project focus
-
-- Keep the note experience simple and readable
-- Improve the rich-text editor behavior and toolbar UX
-- Improve folder, list, and note layout consistency across the app
+- The rich-text editor focuses on the visible toolbar actions rather than a full document editor.
+- Folder, note, and list layouts are still being refined for consistency and readability.
 

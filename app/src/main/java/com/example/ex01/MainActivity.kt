@@ -30,10 +30,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,6 +65,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ex01.ui.theme.Ex01Theme
+import com.example.ex01.ui.theme.ThemeMode
+import com.example.ex01.ui.theme.ThemeSettingsRepository
 import com.example.ex01.NoteWritingToolbar
 import kotlinx.coroutines.launch
 
@@ -71,24 +75,31 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            Ex01Theme {
-                val context = LocalContext.current
-                val database = remember { NoteDatabase.getDatabase(context) }
-                val folderColorRepo = remember { FolderColorRepository(context) }
-                val viewModel: NoteViewModel = viewModel(
-                    factory = NoteViewModelFactory(database.noteDao())
-                )
+            val context = LocalContext.current
+            val database = remember { NoteDatabase.getDatabase(context) }
+            val folderColorRepo = remember { FolderColorRepository(context) }
+            val themeSettingsRepository = remember { ThemeSettingsRepository(context) }
+            val themeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = themeMode == ThemeMode.LIGHT
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = themeMode == ThemeMode.LIGHT
+            }
+            val viewModel: NoteViewModel = viewModel(
+                factory = NoteViewModelFactory(database.noteDao())
+            )
 
-                val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList())
-                
-                val navController = rememberNavController()
-                
+            val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList())
+
+            val navController = rememberNavController()
+
+            Ex01Theme(themeMode = themeMode) {
                 NavHost(navController = navController, startDestination = "list") {
                     composable("list") {
                         MainScreen(
                             viewModel = viewModel,
                             allFolders = folders,
                             folderColorRepo = folderColorRepo,
+                            themeSettingsRepository = themeSettingsRepository,
                             onNoteClick = { noteId -> navController.navigate("edit/$noteId") },
                             onFolderClick = { folderId -> navController.navigate("folder/$folderId") }
                         )
@@ -97,7 +108,7 @@ class MainActivity : ComponentActivity() {
                         val noteId = backStackEntry.arguments?.getInt("noteId") ?: -1
                         NoteEditScreen(noteId = noteId, viewModel = viewModel, onBack = { navController.popBackStack() })
                     }
-                    composable("folder/{folderId}", 
+                    composable("folder/{folderId}",
                         arguments = listOf(navArgument("folderId") { type = NavType.IntType })
                     ) { backStackEntry ->
                         val folderId = backStackEntry.arguments?.getInt("folderId") ?: -1
@@ -125,11 +136,14 @@ fun MainScreen(
     viewModel: NoteViewModel,
     allFolders: List<Folder>,
     folderColorRepo: FolderColorRepository,
+    themeSettingsRepository: ThemeSettingsRepository,
     onNoteClick: (Int) -> Unit,
     onFolderClick: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    val currentThemeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
     var showCreateChooser by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
     var showListDialog by remember { mutableStateOf(false) }
@@ -165,9 +179,7 @@ fun MainScreen(
 
     Scaffold(
         topBar = { 
-            TopAppBar(
-                title = { Text("Home") }
-            ) 
+            HomeTopAppBar(onSettingsClick = { showSettingsDialog = true })
         },
         floatingActionButton = {
             Box {
@@ -550,6 +562,14 @@ fun MainScreen(
                     folderToMove = null
                 },
                 onDismissRequest = { folderToMove = null }
+            )
+        }
+
+        if (showSettingsDialog) {
+            AppSettingsDialog(
+                currentThemeMode = currentThemeMode,
+                onThemeModeSelected = themeSettingsRepository::setThemeMode,
+                onDismissRequest = { showSettingsDialog = false }
             )
         }
     }
@@ -1276,6 +1296,7 @@ private fun NotePreviewDialog(
             }
         }
     }
+
 }
 
 @Composable
@@ -1339,6 +1360,22 @@ private fun MoveToFolderDialog(
     val treeRows = remember(folders, excludedFolderIds) {
         buildFolderTreeRows(folders, excludedFolderIds)
     }
+    val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val containerColor = if (isLightTheme) {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    } else {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+    }
+    val rowColor = if (isLightTheme) {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    }
+    val rowBorderColor = if (isLightTheme) {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+    }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -1348,8 +1385,8 @@ private fun MoveToFolderDialog(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                    color = containerColor,
+                    border = BorderStroke(1.dp, rowBorderColor)
                 ) {
                     Box(
                         modifier = Modifier
@@ -1379,8 +1416,8 @@ private fun MoveToFolderDialog(
                                     .fillMaxWidth()
                                     .padding(start = (row.depth * 10).dp),
                                 shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (row.depth == 0) 0.42f else 0.3f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                                color = if (isLightTheme) rowColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (row.depth == 0) 0.42f else 0.3f),
+                                border = BorderStroke(1.dp, rowBorderColor)
                             ) {
                                 Box(
                                     modifier = Modifier

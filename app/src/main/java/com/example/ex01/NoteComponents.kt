@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -159,6 +160,22 @@ fun FolderCard(
         else -> 148.dp
     }
     val animatedHeight by animateDpAsState(targetValue = targetHeight)
+    val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val containerColor = if (isLightTheme) {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    }
+    val borderColor = if (isLightTheme) {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+    }
+    val elevation = if (isLightTheme) {
+        if (isCollapsed) 2.dp else 1.dp
+    } else {
+        if (isCollapsed) 4.dp else 2.dp
+    }
 
     Surface(
         modifier = modifier
@@ -167,9 +184,9 @@ fun FolderCard(
             .clickable { onClick() },
 
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shadowElevation = if (isCollapsed) 4.dp else 2.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        color = containerColor,
+        shadowElevation = elevation,
+        border = BorderStroke(1.dp, borderColor)
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(6.dp)) {
             if (isCollapsed) {

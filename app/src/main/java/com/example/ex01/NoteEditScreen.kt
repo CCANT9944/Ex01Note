@@ -24,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -41,6 +43,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,6 +66,7 @@ fun NoteEditScreen(
     val bodyFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var pendingAddItemReset by remember { mutableStateOf(false) }
     val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT && note?.listStyle == NoteListStyles.CHECKLIST
@@ -112,7 +118,7 @@ fun NoteEditScreen(
             onBack()
         }
     }
-    val saveAndBack: () -> Unit = {
+    val persistCurrentDraft: (Boolean) -> Unit = { shouldNavigateBack ->
         note?.let { currentNote ->
             scope.launch {
                 val sanitizedBody = if (showBodyEditor) {
@@ -135,12 +141,32 @@ fun NoteEditScreen(
                 } else if (showBodyEditor && sanitizedBody != currentNote.body) {
                     viewModel.updateNote(currentNote.copy(body = sanitizedBody))
                 }
+                if (shouldNavigateBack) {
+                    onBack()
+                }
+            }
+        } ?: run {
+            if (shouldNavigateBack) {
                 onBack()
             }
-        } ?: onBack()
-        Unit
+        }
     }
-    BackHandler { saveAndBack() }
+    val persistCurrentDraftLatest by rememberUpdatedState(newValue = persistCurrentDraft)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                persistCurrentDraftLatest(false)
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    BackHandler { persistCurrentDraft(true) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -151,7 +177,7 @@ fun NoteEditScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = saveAndBack) {
+                    IconButton(onClick = { persistCurrentDraft(true) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
