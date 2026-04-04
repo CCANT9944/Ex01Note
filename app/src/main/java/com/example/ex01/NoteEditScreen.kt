@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -59,16 +60,18 @@ fun NoteEditScreen(
     val note by viewModel.getNote(noteId).collectAsStateWithLifecycle(initialValue = null)
     val items by viewModel.getItems(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     var noteResolved by remember(noteId) { mutableStateOf(false) }
-    var noteTitle by remember { mutableStateOf("") }
+    var draftInitialized by rememberSaveable(noteId) { mutableStateOf(false) }
+    var noteTitle by rememberSaveable(noteId) { mutableStateOf("") }
+    var draftBodyText by rememberSaveable(noteId) { mutableStateOf("") }
     val richTextController = rememberRichTextEditorController(TextFieldValue(""))
-    var newItemText by remember { mutableStateOf(TextFieldValue("")) }
+    var newItemText by rememberSaveable(noteId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     val addItemFocusRequester = remember { FocusRequester() }
     val bodyFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    var pendingAddItemReset by remember { mutableStateOf(false) }
+    var pendingAddItemReset by rememberSaveable(noteId) { mutableStateOf(false) }
     val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT && note?.listStyle == NoteListStyles.CHECKLIST
     val submitItem = {
         val trimmedText = newItemText.text.trim()
@@ -90,20 +93,28 @@ fun NoteEditScreen(
     LaunchedEffect(note?.id, note?.kind, note?.title, note?.body) {
         note?.let {
             noteResolved = true
-            noteTitle = it.title
-            val loadedBody = if (showBodyEditor) {
-                withContext(Dispatchers.Default) {
-                    collapseEmptyFormattingSpans(
-                        normalizeRichTextMarkup(
-                            TextFieldValue(it.body, selection = TextRange(it.body.length))
+            if (!draftInitialized) {
+                noteTitle = it.title
+                val loadedBody = if (showBodyEditor) {
+                    withContext(Dispatchers.Default) {
+                        collapseEmptyFormattingSpans(
+                            normalizeRichTextMarkup(
+                                TextFieldValue(it.body, selection = TextRange(it.body.length))
+                            )
                         )
-                    )
+                    }
+                } else {
+                    TextFieldValue(it.body, selection = TextRange(it.body.length))
                 }
-            } else {
-                TextFieldValue(it.body, selection = TextRange(it.body.length))
-            }
-            if (showBodyEditor) {
-                richTextController.updateValue(loadedBody)
+                draftBodyText = loadedBody.text
+                if (showBodyEditor) {
+                    richTextController.updateValue(loadedBody)
+                }
+                draftInitialized = true
+            } else if (showBodyEditor) {
+                richTextController.updateValue(
+                    TextFieldValue(draftBodyText, selection = TextRange(draftBodyText.length))
+                )
             }
         }
         if (showBodyEditor) {
@@ -221,7 +232,10 @@ fun NoteEditScreen(
             if (showBodyEditor) {
                 RichTextBodyEditor(
                     value = richTextController.value,
-                    onValueChange = { next -> richTextController.updateValue(next) },
+                    onValueChange = { next ->
+                        richTextController.updateValue(next)
+                        draftBodyText = next.text
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
