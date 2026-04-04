@@ -2,7 +2,6 @@ package com.example.ex01
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +26,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,8 +33,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SectionHeader(
     title: String,
-    subtitle: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
 ) {
     Column(
         modifier = modifier
@@ -136,6 +134,7 @@ fun FolderLabelStack(
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun FolderCard(
     folder: Folder,
@@ -518,6 +517,7 @@ fun NoteCard(
 @Composable
 private fun CardMenuButton(
     isCollapsed: Boolean,
+    modifier: Modifier = Modifier,
     onMenuClick: () -> Unit,
     onMenuCollapse: () -> Unit,
     onMenuRename: () -> Unit,
@@ -525,7 +525,6 @@ private fun CardMenuButton(
     onMenuChangeStyle: (() -> Unit)? = null,
     onMenuDelete: () -> Unit,
     onMenuMoveToFolder: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
