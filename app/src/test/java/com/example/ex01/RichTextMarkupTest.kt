@@ -395,6 +395,52 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun toggleBulletFormatting_appliesToTheWholeSelectedLine() {
+        val selected = TextFieldValue("Hello world", selection = TextRange(6, 11))
+        val bulleted = toggleBulletFormatting(selected)
+
+        assertEquals("\uE008Hello world\uE009", bulleted.text)
+        assertEquals(TextRange(7, 12), bulleted.selection)
+    }
+
+    @Test
+    fun toggleBulletFormatting_appliesToAllSelectedLines() {
+        val selected = TextFieldValue(
+            "First line\nSecond line\nThird line",
+            selection = TextRange(3, 25)
+        )
+
+        val bulleted = toggleBulletFormatting(selected)
+
+        assertEquals("\uE008First line\uE009\n\uE008Second line\uE009\n\uE008Third line\uE009", bulleted.text)
+    }
+
+    @Test
+    fun toggleBulletFormatting_unbulletsTheWholeSelectedLine() {
+        val bulleted = TextFieldValue("\uE008Hello world\uE009", selection = TextRange(7, 12))
+        val unbulleted = toggleBulletFormatting(bulleted)
+
+        assertEquals("Hello world", unbulleted.text)
+        assertEquals(TextRange(6, 11), unbulleted.selection)
+    }
+
+    @Test
+    fun renderRichTextMarkup_hidesBulletMarkersAndShowsBulletPrefix() {
+        val rendered = renderRichTextMarkup("\uE008Hello world\uE009\n\uE008Second line\uE009")
+
+        assertEquals("• Hello world\n• Second line", rendered.text)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsBulletAtCaret() {
+        val value = TextFieldValue("Hello \uE008world\uE009", selection = TextRange(7))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.bulletActive)
+    }
+
+    @Test
     fun toggleBoldFormatting_insertsAndRemovesCaretSpan() {
         val enabled = toggleBoldFormatting(TextFieldValue("Hello", selection = TextRange(5)))
 

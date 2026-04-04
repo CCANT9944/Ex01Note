@@ -209,6 +209,7 @@ fun NoteEditScreen(
                     onItalicClick = richTextController::toggleItalic,
                     onUnderlineClick = richTextController::toggleUnderline,
                     onStrikethroughClick = richTextController::toggleStrikethrough,
+                    onBulletClick = richTextController::toggleBullet,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))

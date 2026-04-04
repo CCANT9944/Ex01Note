@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package com.example.ex01
 
 import androidx.compose.ui.graphics.Color
@@ -26,6 +28,8 @@ const val UNDERLINE_OPEN_MARKER: Char = '\uE004'
 const val UNDERLINE_CLOSE_MARKER: Char = '\uE005'
 const val STRIKETHROUGH_OPEN_MARKER: Char = '\uE006'
 const val STRIKETHROUGH_CLOSE_MARKER: Char = '\uE007'
+const val BULLET_OPEN_MARKER: Char = '\uE008'
+const val BULLET_CLOSE_MARKER: Char = '\uE009'
 
 data class FormattingMarkerPair(
     val openMarker: Char,
@@ -37,6 +41,7 @@ private val BOLD_MARKERS = FormattingMarkerPair(BOLD_OPEN_MARKER, BOLD_CLOSE_MAR
 private val ITALIC_MARKERS = FormattingMarkerPair(ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER, "i")
 private val UNDERLINE_MARKERS = FormattingMarkerPair(UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER, "u")
 private val STRIKETHROUGH_MARKERS = FormattingMarkerPair(STRIKETHROUGH_OPEN_MARKER, STRIKETHROUGH_CLOSE_MARKER, "s")
+private val BULLET_MARKERS = FormattingMarkerPair(BULLET_OPEN_MARKER, BULLET_CLOSE_MARKER, "bullet")
 
 private data class RichTextTagToken(
     val endExclusive: Int,
@@ -150,7 +155,7 @@ fun collapseEmptyBoldSpans(
 
 fun collapseEmptyFormattingSpans(
     value: TextFieldValue,
-    markerPairs: List<FormattingMarkerPair> = listOf(BOLD_MARKERS, ITALIC_MARKERS, UNDERLINE_MARKERS, STRIKETHROUGH_MARKERS),
+    markerPairs: List<FormattingMarkerPair> = listOf(BOLD_MARKERS, ITALIC_MARKERS, UNDERLINE_MARKERS, STRIKETHROUGH_MARKERS, BULLET_MARKERS),
     preserveCollapsedSelectionSpan: Boolean = true
 ): TextFieldValue {
     val raw = value.text
@@ -228,7 +233,8 @@ fun normalizeRichTextMarkup(value: TextFieldValue): TextFieldValue {
         if (current == BOLD_OPEN_MARKER || current == BOLD_CLOSE_MARKER ||
             current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER ||
             current == UNDERLINE_OPEN_MARKER || current == UNDERLINE_CLOSE_MARKER ||
-            current == STRIKETHROUGH_OPEN_MARKER || current == STRIKETHROUGH_CLOSE_MARKER
+            current == STRIKETHROUGH_OPEN_MARKER || current == STRIKETHROUGH_CLOSE_MARKER ||
+            current == BULLET_OPEN_MARKER || current == BULLET_CLOSE_MARKER
         ) {
             originalToCleaned[rawIndex] = cleanedIndex
             cleaned.append(current)
@@ -290,6 +296,143 @@ fun toggleItalicFormatting(value: TextFieldValue): TextFieldValue = toggleFormat
 fun toggleUnderlineFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, UNDERLINE_MARKERS)
 
 fun toggleStrikethroughFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, STRIKETHROUGH_MARKERS)
+
+fun toggleBulletFormatting(value: TextFieldValue): TextFieldValue {
+    val normalized = normalizeRichTextMarkup(value)
+    val raw = normalized.text
+    if (raw.isEmpty()) return normalized
+
+    val start = minOf(normalized.selection.start, normalized.selection.end).coerceIn(0, raw.length)
+    val end = maxOf(normalized.selection.start, normalized.selection.end).coerceIn(0, raw.length)
+
+    val lineRanges = collectLineRanges(raw)
+    val selectionEndOffset = if (start == end) start else (end - 1).coerceAtLeast(start)
+    val firstSelectedLineIndex = findLineIndexForOffset(lineRanges, start)
+    val lastSelectedLineIndex = findLineIndexForOffset(lineRanges, selectionEndOffset)
+    val selectedLines = lineRanges.subList(firstSelectedLineIndex, lastSelectedLineIndex + 1)
+    val allSelectedLinesBulleted = selectedLines.isNotEmpty() && selectedLines.all { line ->
+        isBulletedLine(raw, line)
+    }
+
+    val originalToCleaned = IntArray(raw.length + 1)
+    val rebuilt = StringBuilder(raw.length + selectedLines.size * 2)
+    var cleanedIndex = 0
+
+    fun appendOriginal(index: Int) {
+        originalToCleaned[index] = cleanedIndex
+        rebuilt.append(raw[index])
+        cleanedIndex++
+    }
+
+    fun appendInserted(char: Char) {
+        rebuilt.append(char)
+        cleanedIndex++
+    }
+
+    for (lineIndex in lineRanges.indices) {
+        val line = lineRanges[lineIndex]
+        val isSelectedLine = lineIndex in firstSelectedLineIndex..lastSelectedLineIndex
+        val lineIsBulleted = isBulletedLine(raw, line)
+
+        when {
+            !isSelectedLine -> {
+                for (index in line.start until line.endExclusive) {
+                    appendOriginal(index)
+                }
+                originalToCleaned[line.endExclusive] = cleanedIndex
+            }
+
+            allSelectedLinesBulleted && lineIsBulleted -> {
+                originalToCleaned[line.start] = cleanedIndex
+                for (index in (line.start + 1) until (line.endExclusive - 1)) {
+                    appendOriginal(index)
+                }
+                if (line.endExclusive > line.start) {
+                    originalToCleaned[line.endExclusive - 1] = cleanedIndex
+                }
+                originalToCleaned[line.endExclusive] = cleanedIndex
+            }
+
+            allSelectedLinesBulleted -> {
+                for (index in line.start until line.endExclusive) {
+                    appendOriginal(index)
+                }
+                originalToCleaned[line.endExclusive] = cleanedIndex
+            }
+
+            lineIsBulleted -> {
+                for (index in line.start until line.endExclusive) {
+                    appendOriginal(index)
+                }
+                originalToCleaned[line.endExclusive] = cleanedIndex
+            }
+
+            else -> {
+                appendInserted(BULLET_OPEN_MARKER)
+                for (index in line.start until line.endExclusive) {
+                    appendOriginal(index)
+                }
+                originalToCleaned[line.endExclusive] = cleanedIndex
+                appendInserted(BULLET_CLOSE_MARKER)
+            }
+        }
+
+
+        if (line.newlineIndex != null) {
+            rebuilt.append('\n')
+            cleanedIndex++
+        }
+    }
+
+
+    return rebuildValue(
+        original = normalized,
+        text = rebuilt.toString(),
+        selection = TextRange(originalToCleaned[start], originalToCleaned[end])
+    )
+}
+
+private data class RawLineRange(
+    val start: Int,
+    val endExclusive: Int,
+    val newlineIndex: Int? = null
+)
+
+private fun collectLineRanges(raw: String): List<RawLineRange> {
+    val ranges = mutableListOf<RawLineRange>()
+    var lineStart = 0
+
+    while (lineStart <= raw.length) {
+        val newlineIndex = raw.indexOf('\n', lineStart)
+        val lineEndExclusive = if (newlineIndex >= 0) newlineIndex else raw.length
+        ranges.add(RawLineRange(lineStart, lineEndExclusive, if (newlineIndex >= 0) newlineIndex else null))
+
+        if (newlineIndex < 0) break
+        lineStart = newlineIndex + 1
+    }
+
+    return ranges
+}
+
+private fun findLineIndexForOffset(lineRanges: List<RawLineRange>, offset: Int): Int {
+    if (lineRanges.isEmpty()) return 0
+
+    val clampedOffset = offset.coerceAtLeast(0)
+    for (index in lineRanges.indices) {
+        val line = lineRanges[index]
+        if (clampedOffset >= line.start && clampedOffset <= line.endExclusive) {
+            return index
+        }
+    }
+
+    return lineRanges.lastIndex
+}
+
+private fun isBulletedLine(raw: String, line: RawLineRange): Boolean {
+    return line.endExclusive - line.start >= 2 &&
+        raw[line.start] == BULLET_OPEN_MARKER &&
+        raw[line.endExclusive - 1] == BULLET_CLOSE_MARKER
+}
 
 private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPair): TextFieldValue {
     val normalized = normalizeRichTextMarkup(value)
@@ -442,7 +585,8 @@ private fun previousVisibleCharacterBefore(raw: String, offset: Int): Char? {
         when (raw[index]) {
             BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
             ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
-            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> index--
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER,
+            BULLET_OPEN_MARKER, BULLET_CLOSE_MARKER -> index--
             else -> return raw[index]
         }
     }
@@ -536,7 +680,9 @@ private fun countVisibleRichTextCharacters(raw: String, startIndex: Int, endInde
         when (raw[index]) {
             BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
             ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
-            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> Unit
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER,
+            STRIKETHROUGH_OPEN_MARKER, STRIKETHROUGH_CLOSE_MARKER,
+            BULLET_OPEN_MARKER, BULLET_CLOSE_MARKER -> Unit
             else -> count++
         }
     }
@@ -552,7 +698,9 @@ private fun hasVisibleRichTextCharacters(raw: String, startIndex: Int, endIndexE
         when (raw[index]) {
             BOLD_OPEN_MARKER, BOLD_CLOSE_MARKER,
             ITALIC_OPEN_MARKER, ITALIC_CLOSE_MARKER,
-            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER -> Unit
+            UNDERLINE_OPEN_MARKER, UNDERLINE_CLOSE_MARKER,
+            STRIKETHROUGH_OPEN_MARKER, STRIKETHROUGH_CLOSE_MARKER,
+            BULLET_OPEN_MARKER, BULLET_CLOSE_MARKER -> Unit
             else -> return true
         }
     }
@@ -658,7 +806,7 @@ private fun findEnclosingFormattingMarkers(
             markers.closeMarker -> {
                 if (depth > 0) {
                     depth--
-                    if (depth == 0 && currentOpenIndex >= 0 && currentOpenIndex <= start && rawIndex >= end) {
+                    if (depth == 0 && currentOpenIndex <= start && rawIndex >= end) {
                         return FormattingMarkerRange(currentOpenIndex, rawIndex)
                     }
                 }
@@ -682,14 +830,16 @@ data class RichTextFormattingState(
     val boldActive: Boolean,
     val italicActive: Boolean,
     val underlineActive: Boolean,
-    val strikethroughActive: Boolean
+    val strikethroughActive: Boolean,
+    val bulletActive: Boolean
 )
 
 private data class RichTextDepth(
     val boldDepth: Int,
     val italicDepth: Int,
     val underlineDepth: Int,
-    val strikethroughDepth: Int
+    val strikethroughDepth: Int,
+    val bulletDepth: Int
 )
 
 private inline fun scanRichTextFormatting(
@@ -701,6 +851,7 @@ private inline fun scanRichTextFormatting(
     var italicDepth = 0
     var underlineDepth = 0
     var strikethroughDepth = 0
+    var bulletDepth = 0
     var rawIndex = 0
     val limit = untilExclusive.coerceIn(0, raw.length)
 
@@ -738,6 +889,14 @@ private inline fun scanRichTextFormatting(
                 if (strikethroughDepth > 0) strikethroughDepth--
                 rawIndex++
             }
+            BULLET_OPEN_MARKER -> {
+                bulletDepth++
+                rawIndex++
+            }
+            BULLET_CLOSE_MARKER -> {
+                if (bulletDepth > 0) bulletDepth--
+                rawIndex++
+            }
             else -> {
                 val token = parseRichTextTagToken(raw, rawIndex)
                 if (token != null) {
@@ -763,18 +922,23 @@ private inline fun scanRichTextFormatting(
                             } else {
                                 strikethroughDepth++
                             }
+                            "bullet" -> if (token.isClosing) {
+                                if (bulletDepth > 0) bulletDepth--
+                            } else {
+                                bulletDepth++
+                            }
                         }
                     }
                     rawIndex = token.endExclusive
                 } else {
-                    onVisibleCharacter(rawIndex, RichTextDepth(boldDepth, italicDepth, underlineDepth, strikethroughDepth))
+                    onVisibleCharacter(rawIndex, RichTextDepth(boldDepth, italicDepth, underlineDepth, strikethroughDepth, bulletDepth))
                     rawIndex++
                 }
             }
         }
     }
 
-    return RichTextDepth(boldDepth, italicDepth, underlineDepth, strikethroughDepth)
+    return RichTextDepth(boldDepth, italicDepth, underlineDepth, strikethroughDepth, bulletDepth)
 }
 
 private fun formattingDepthAtOffset(raw: String, offset: Int): RichTextDepth {
@@ -783,7 +947,7 @@ private fun formattingDepthAtOffset(raw: String, offset: Int): RichTextDepth {
 
 fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
     val raw = value.text
-    if (raw.isEmpty()) return RichTextFormattingState(false, false, false, false)
+    if (raw.isEmpty()) return RichTextFormattingState(false, false, false, false, false)
 
     val start = minOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
     val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
@@ -794,7 +958,8 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
             depth.boldDepth > 0,
             depth.italicDepth > 0,
             depth.underlineDepth > 0,
-            depth.strikethroughDepth > 0
+            depth.strikethroughDepth > 0,
+            depth.bulletDepth > 0
         )
     }
 
@@ -802,6 +967,7 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
     var italicActive = false
     var underlineActive = false
     var strikethroughActive = false
+    var bulletActive = false
 
     scanRichTextFormatting(raw, untilExclusive = end) { index, depth ->
         if (index >= start) {
@@ -809,10 +975,11 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
             if (depth.italicDepth > 0) italicActive = true
             if (depth.underlineDepth > 0) underlineActive = true
             if (depth.strikethroughDepth > 0) strikethroughActive = true
+            if (depth.bulletDepth > 0) bulletActive = true
         }
     }
 
-    return RichTextFormattingState(boldActive, italicActive, underlineActive, strikethroughActive)
+    return RichTextFormattingState(boldActive, italicActive, underlineActive, strikethroughActive, bulletActive)
 }
 
 private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerPair): Boolean {
@@ -829,6 +996,7 @@ private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerP
             ITALIC_MARKERS -> depth.italicDepth > 0
             UNDERLINE_MARKERS -> depth.underlineDepth > 0
             STRIKETHROUGH_MARKERS -> depth.strikethroughDepth > 0
+            BULLET_MARKERS -> depth.bulletDepth > 0
             else -> false
         }
     }
@@ -841,6 +1009,7 @@ private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerP
                 ITALIC_MARKERS -> if (depth.italicDepth > 0) active = true
                 UNDERLINE_MARKERS -> if (depth.underlineDepth > 0) active = true
                 STRIKETHROUGH_MARKERS -> if (depth.strikethroughDepth > 0) active = true
+                BULLET_MARKERS -> if (depth.bulletDepth > 0) active = true
             }
         }
     }
@@ -956,7 +1125,8 @@ private fun stripRichTextMarkup(raw: String, originalToCleaned: IntArray? = null
         if (current == BOLD_OPEN_MARKER || current == BOLD_CLOSE_MARKER ||
             current == ITALIC_OPEN_MARKER || current == ITALIC_CLOSE_MARKER ||
             current == UNDERLINE_OPEN_MARKER || current == UNDERLINE_CLOSE_MARKER ||
-            current == STRIKETHROUGH_OPEN_MARKER || current == STRIKETHROUGH_CLOSE_MARKER
+            current == STRIKETHROUGH_OPEN_MARKER || current == STRIKETHROUGH_CLOSE_MARKER ||
+            current == BULLET_OPEN_MARKER || current == BULLET_CLOSE_MARKER
         ) {
             originalToCleaned?.let { if (rawIndex < it.size) it[rawIndex] = cleanedIndex }
             rawIndex++
@@ -1026,6 +1196,7 @@ private fun richTextTransform(raw: String): TransformedText {
     val italicDepth = ArrayDeque<Unit>()
     val underlineDepth = ArrayDeque<Unit>()
     val strikeDepth = ArrayDeque<Unit>()
+    val bulletDepth = ArrayDeque<Unit>()
     val colors = ArrayDeque<Color>()
     val highlights = ArrayDeque<Color>()
     val originalToTransformed = IntArray(raw.length + 1)
@@ -1102,6 +1273,25 @@ private fun richTextTransform(raw: String): TransformedText {
             rawIndex++
             continue
         }
+        if (current == BULLET_OPEN_MARKER) {
+            originalToTransformed[rawIndex] = visibleIndex
+            builder.append("• ")
+            if (transformedToOriginal.isEmpty()) {
+                transformedToOriginal.add(rawIndex)
+            }
+            transformedToOriginal.add(rawIndex)
+            transformedToOriginal.add(rawIndex)
+            visibleIndex += 2
+            bulletDepth.addLast(Unit)
+            rawIndex++
+            continue
+        }
+        if (current == BULLET_CLOSE_MARKER) {
+            originalToTransformed[rawIndex] = visibleIndex
+            if (bulletDepth.isNotEmpty()) bulletDepth.removeLast()
+            rawIndex++
+            continue
+        }
 
         val token = parseRichTextTagToken(raw, rawIndex)
         if (token != null) {
@@ -1133,6 +1323,17 @@ private fun richTextTransform(raw: String): TransformedText {
                         if (strikeDepth.isNotEmpty()) strikeDepth.removeLast()
                     } else {
                         strikeDepth.addLast(Unit)
+                    }
+                    "bullet" -> if (token.isClosing) {
+                        if (bulletDepth.isNotEmpty()) bulletDepth.removeAt(bulletDepth.lastIndex)
+                    } else {
+                        if (bulletDepth.isEmpty()) {
+                            builder.append("• ")
+                            transformedToOriginal.add(rawIndex)
+                            transformedToOriginal.add(rawIndex)
+                            visibleIndex += 2
+                        }
+                        bulletDepth.addLast(Unit)
                     }
                     "color" -> if (token.isClosing) {
                         if (colors.isNotEmpty()) colors.removeLast()
@@ -1169,7 +1370,7 @@ private fun richTextTransform(raw: String): TransformedText {
 
     if (transformedToOriginal.isEmpty()) {
         val firstFormattingOpen = raw.indexOfFirst {
-            it == BOLD_OPEN_MARKER || it == ITALIC_OPEN_MARKER || it == UNDERLINE_OPEN_MARKER || it == STRIKETHROUGH_OPEN_MARKER
+            it == BOLD_OPEN_MARKER || it == ITALIC_OPEN_MARKER || it == UNDERLINE_OPEN_MARKER || it == STRIKETHROUGH_OPEN_MARKER || it == BULLET_OPEN_MARKER
         }
         transformedToOriginal.add(
             if (firstFormattingOpen >= 0) (firstFormattingOpen + 1).coerceAtMost(raw.length) else raw.length

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatStrikethrough
@@ -30,6 +31,7 @@ fun NoteWritingToolbar(
     onItalicClick: () -> Unit,
     onUnderlineClick: () -> Unit,
     onStrikethroughClick: () -> Unit,
+    onBulletClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val formattingState = richTextFormattingState(value)
@@ -71,6 +73,12 @@ fun NoteWritingToolbar(
                 active = formattingState.strikethroughActive,
                 onClick = onStrikethroughClick,
                 icon = Icons.Filled.FormatStrikethrough
+            )
+            FormattingToolButton(
+                label = "Bullet",
+                active = formattingState.bulletActive,
+                onClick = onBulletClick,
+                icon = Icons.AutoMirrored.Filled.FormatListBulleted
             )
         }
     }

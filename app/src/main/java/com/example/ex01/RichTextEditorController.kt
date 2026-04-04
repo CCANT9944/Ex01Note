@@ -31,6 +31,10 @@ internal class RichTextEditorController(initialValue: TextFieldValue) {
     fun toggleStrikethrough() {
         value = toggleStrikethroughFormatting(value)
     }
+
+    fun toggleBullet() {
+        value = toggleBulletFormatting(value)
+    }
 }
 
 @Composable
