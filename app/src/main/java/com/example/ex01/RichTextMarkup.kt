@@ -30,6 +30,7 @@ const val STRIKETHROUGH_OPEN_MARKER: Char = '\uE006'
 const val STRIKETHROUGH_CLOSE_MARKER: Char = '\uE007'
 const val BULLET_OPEN_MARKER: Char = '\uE008'
 const val BULLET_CLOSE_MARKER: Char = '\uE009'
+private const val INDENT_UNIT = "    "
 
 data class FormattingMarkerPair(
     val openMarker: Char,
@@ -390,6 +391,91 @@ fun toggleBulletFormatting(value: TextFieldValue): TextFieldValue {
         text = rebuilt.toString(),
         selection = TextRange(originalToCleaned[start], originalToCleaned[end])
     )
+}
+
+fun indentSelectedLines(value: TextFieldValue): TextFieldValue {
+    return shiftSelectedLines(value, indent = true)
+}
+
+fun outdentSelectedLines(value: TextFieldValue): TextFieldValue {
+    return shiftSelectedLines(value, indent = false)
+}
+
+private fun shiftSelectedLines(value: TextFieldValue, indent: Boolean): TextFieldValue {
+    val raw = value.text
+    if (raw.isEmpty()) return value
+
+    val lineRanges = collectLineRanges(raw)
+    val start = value.selection.start.coerceIn(0, raw.length)
+    val end = value.selection.end.coerceIn(0, raw.length)
+    val selectionEndOffset = if (start == end) start else (end - 1).coerceAtLeast(start)
+    val firstSelectedLineIndex = findLineIndexForOffset(lineRanges, start)
+    val lastSelectedLineIndex = findLineIndexForOffset(lineRanges, selectionEndOffset)
+
+    val originalToCleaned = IntArray(raw.length + 1)
+    val rebuilt = StringBuilder(raw.length + if (indent) (lastSelectedLineIndex - firstSelectedLineIndex + 1) * INDENT_UNIT.length else 0)
+    var cleanedIndex = 0
+
+    fun appendOriginal(index: Int) {
+        originalToCleaned[index] = cleanedIndex
+        rebuilt.append(raw[index])
+        cleanedIndex++
+    }
+
+    fun appendIndentPrefix() {
+        rebuilt.append(INDENT_UNIT)
+        cleanedIndex += INDENT_UNIT.length
+    }
+
+    for (lineIndex in lineRanges.indices) {
+        val line = lineRanges[lineIndex]
+        val isSelectedLine = lineIndex in firstSelectedLineIndex..lastSelectedLineIndex
+
+        if (!isSelectedLine) {
+            for (index in line.start until line.endExclusive) {
+                appendOriginal(index)
+            }
+            originalToCleaned[line.endExclusive] = cleanedIndex
+        } else if (indent) {
+            originalToCleaned[line.start] = cleanedIndex + INDENT_UNIT.length
+            appendIndentPrefix()
+            for (index in line.start until line.endExclusive) {
+                appendOriginal(index)
+            }
+            originalToCleaned[line.endExclusive] = cleanedIndex
+        } else {
+            val leadingSpaces = countLeadingSpaces(raw, line.start, line.endExclusive).coerceAtMost(INDENT_UNIT.length)
+            originalToCleaned[line.start] = cleanedIndex
+            for (index in line.start until (line.start + leadingSpaces)) {
+                originalToCleaned[index] = cleanedIndex
+            }
+            for (index in (line.start + leadingSpaces) until line.endExclusive) {
+                appendOriginal(index)
+            }
+            originalToCleaned[line.endExclusive] = cleanedIndex
+        }
+
+        if (line.newlineIndex != null) {
+            rebuilt.append('\n')
+            cleanedIndex++
+        }
+    }
+
+    originalToCleaned[raw.length] = cleanedIndex
+
+    return rebuildValue(
+        original = value,
+        text = rebuilt.toString(),
+        selection = TextRange(originalToCleaned[start], originalToCleaned[end])
+    )
+}
+
+private fun countLeadingSpaces(raw: String, start: Int, endExclusive: Int): Int {
+    var count = 0
+    while (start + count < endExclusive && raw[start + count] == ' ') {
+        count++
+    }
+    return count
 }
 
 private data class RawLineRange(
@@ -831,7 +917,8 @@ data class RichTextFormattingState(
     val italicActive: Boolean,
     val underlineActive: Boolean,
     val strikethroughActive: Boolean,
-    val bulletActive: Boolean
+    val bulletActive: Boolean,
+    val indentActive: Boolean
 )
 
 private data class RichTextDepth(
@@ -947,7 +1034,7 @@ private fun formattingDepthAtOffset(raw: String, offset: Int): RichTextDepth {
 
 fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
     val raw = value.text
-    if (raw.isEmpty()) return RichTextFormattingState(false, false, false, false, false)
+    if (raw.isEmpty()) return RichTextFormattingState(false, false, false, false, false, false)
 
     val start = minOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
     val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, raw.length)
@@ -959,7 +1046,8 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
             depth.italicDepth > 0,
             depth.underlineDepth > 0,
             depth.strikethroughDepth > 0,
-            depth.bulletDepth > 0
+            depth.bulletDepth > 0,
+            isIndentedSelection(raw, start, end)
         )
     }
 
@@ -979,7 +1067,32 @@ fun richTextFormattingState(value: TextFieldValue): RichTextFormattingState {
         }
     }
 
-    return RichTextFormattingState(boldActive, italicActive, underlineActive, strikethroughActive, bulletActive)
+    return RichTextFormattingState(
+        boldActive,
+        italicActive,
+        underlineActive,
+        strikethroughActive,
+        bulletActive,
+        isIndentedSelection(raw, start, end)
+    )
+}
+
+private fun isIndentedSelection(raw: String, start: Int, end: Int): Boolean {
+    if (raw.isEmpty()) return false
+
+    val lineRanges = collectLineRanges(raw)
+    val selectionEndOffset = if (start == end) start else (end - 1).coerceAtLeast(start)
+    val firstSelectedLineIndex = findLineIndexForOffset(lineRanges, start)
+    val lastSelectedLineIndex = findLineIndexForOffset(lineRanges, selectionEndOffset)
+
+    for (lineIndex in firstSelectedLineIndex..lastSelectedLineIndex) {
+        val line = lineRanges[lineIndex]
+        if (countLeadingSpaces(raw, line.start, line.endExclusive) > 0) {
+            return true
+        }
+    }
+
+    return false
 }
 
 private fun isFormattingActive(value: TextFieldValue, markers: FormattingMarkerPair): Boolean {

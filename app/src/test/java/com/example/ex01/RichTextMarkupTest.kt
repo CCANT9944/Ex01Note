@@ -107,6 +107,19 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun richTextVisualTransformation_mapsLongMarkerHeavyCaretToTransformedEnd() {
+        val raw = buildString {
+            append("a".repeat(228))
+            append(BOLD_OPEN_MARKER)
+            append(BOLD_CLOSE_MARKER)
+        }
+        val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
+
+        assertEquals("a".repeat(228), transformed.text.text)
+        assertEquals(transformed.text.length, transformed.offsetMapping.originalToTransformed(raw.length))
+    }
+
+    @Test
     fun normalizeRichTextMarkup_convertsLegacyBoldTagsToMarkers() {
         val normalized = normalizeRichTextMarkup(
             TextFieldValue("Cătălin [b]test[/b]", selection = TextRange(19, 19))
@@ -425,6 +438,44 @@ class RichTextMarkupTest {
     }
 
     @Test
+    fun indentSelectedLines_indentsCollapsedCaretLine() {
+        val indented = indentSelectedLines(TextFieldValue("Hello", selection = TextRange(0)))
+
+        assertEquals("    Hello", indented.text)
+        assertEquals(TextRange(4), indented.selection)
+    }
+
+    @Test
+    fun indentSelectedLines_indentsEverySelectedLine() {
+        val selected = TextFieldValue("First\nSecond\nThird", selection = TextRange(0, 18))
+
+        val indented = indentSelectedLines(selected)
+
+        assertEquals("    First\n    Second\n    Third", indented.text)
+        assertEquals(TextRange(4, 30), indented.selection)
+    }
+
+    @Test
+    fun outdentSelectedLines_removesLeadingSpacesFromEachSelectedLine() {
+        val selected = TextFieldValue("    First\n  Second\nThird", selection = TextRange(0, 24))
+
+        val outdented = outdentSelectedLines(selected)
+
+        assertEquals("First\nSecond\nThird", outdented.text)
+        assertEquals(TextRange(0, 18), outdented.selection)
+    }
+
+    @Test
+    fun outdentSelectedLines_keepsSelectionStableInsideRemovedIndent() {
+        val selected = TextFieldValue("    First\n    Second", selection = TextRange(2, 14))
+
+        val outdented = outdentSelectedLines(selected)
+
+        assertEquals("First\nSecond", outdented.text)
+        assertEquals(TextRange(0, 6), outdented.selection)
+    }
+
+    @Test
     fun renderRichTextMarkup_hidesBulletMarkersAndShowsBulletPrefix() {
         val rendered = renderRichTextMarkup("\uE008Hello world\uE009\n\uE008Second line\uE009")
 
@@ -438,6 +489,33 @@ class RichTextMarkupTest {
         val state = richTextFormattingState(value)
 
         assertTrue(state.bulletActive)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsIndentedCaretLine() {
+        val value = TextFieldValue("    Hello", selection = TextRange(4))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.indentActive)
+    }
+
+    @Test
+    fun richTextFormattingState_detectsIndentedSelectionAcrossLines() {
+        val value = TextFieldValue("    First\nSecond", selection = TextRange(0, 16))
+
+        val state = richTextFormattingState(value)
+
+        assertTrue(state.indentActive)
+    }
+
+    @Test
+    fun richTextFormattingState_returnsFalseForPlainLineIndentState() {
+        val value = TextFieldValue("Hello", selection = TextRange(0))
+
+        val state = richTextFormattingState(value)
+
+        assertFalse(state.indentActive)
     }
 
     @Test

@@ -69,6 +69,7 @@ import com.example.ex01.ui.theme.ThemeMode
 import com.example.ex01.ui.theme.ThemeSettingsRepository
 import com.example.ex01.NoteWritingToolbar
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.firstOrNull
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,7 +80,10 @@ class MainActivity : ComponentActivity() {
             val database = remember { NoteDatabase.getDatabase(context) }
             val folderColorRepo = remember { FolderColorRepository(context) }
             val themeSettingsRepository = remember { ThemeSettingsRepository(context) }
+            val lastOpenNoteRepository = remember { LastOpenNoteRepository(context) }
             val themeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
+            val savedLastOpenNoteId = remember { lastOpenNoteRepository.lastOpenNoteId() }
+            var startupRoute by remember { mutableStateOf<String?>(if (savedLastOpenNoteId == null) "list" else null) }
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = themeMode == ThemeMode.LIGHT
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = themeMode == ThemeMode.LIGHT
@@ -91,38 +95,71 @@ class MainActivity : ComponentActivity() {
             val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList())
 
             val navController = rememberNavController()
+            LaunchedEffect(savedLastOpenNoteId) {
+                val restoredNoteId = savedLastOpenNoteId ?: return@LaunchedEffect
+                val restoredNote = withContext(Dispatchers.IO) {
+                    viewModel.getNote(restoredNoteId).firstOrNull()
+                }
+                startupRoute = if (restoredNote != null) {
+                    "edit/$restoredNoteId"
+                } else {
+                    lastOpenNoteRepository.clearLastOpenNoteId()
+                    "list"
+                }
+            }
 
             Ex01Theme(themeMode = themeMode) {
-                NavHost(navController = navController, startDestination = "list") {
-                    composable("list") {
-                        MainScreen(
-                            viewModel = viewModel,
-                            allFolders = folders,
-                            folderColorRepo = folderColorRepo,
-                            themeSettingsRepository = themeSettingsRepository,
-                            onNoteClick = { noteId -> navController.navigate("edit/$noteId") },
-                            onFolderClick = { folderId -> navController.navigate("folder/$folderId") }
-                        )
+                if (startupRoute == null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-                    composable("edit/{noteId}", arguments = listOf(navArgument("noteId") { type = NavType.IntType })) { backStackEntry ->
-                        val noteId = backStackEntry.arguments?.getInt("noteId") ?: -1
-                        NoteEditScreen(noteId = noteId, viewModel = viewModel, onBack = { navController.popBackStack() })
+                } else {
+                    val openNote: (Int) -> Unit = { noteId ->
+                        lastOpenNoteRepository.setLastOpenNoteId(noteId)
+                        navController.navigate("edit/$noteId") { launchSingleTop = true }
                     }
-                    composable("folder/{folderId}",
-                        arguments = listOf(navArgument("folderId") { type = NavType.IntType })
-                    ) { backStackEntry ->
-                        val folderId = backStackEntry.arguments?.getInt("folderId") ?: -1
-                        val folderName = folders.firstOrNull { it.id == folderId }?.name ?: "Folder"
-                        FolderDetailScreen(
-                            folderId = folderId,
-                            folderName = folderName,
-                            viewModel = viewModel,
-                            allFolders = folders,
-                            folderColorRepo = folderColorRepo,
-                            onFolderClick = { childFolderId -> navController.navigate("folder/$childFolderId") },
-                            onNoteClick = { noteId -> navController.navigate("edit/$noteId") },
-                            onBack = { navController.popBackStack() }
-                        )
+
+                    NavHost(navController = navController, startDestination = startupRoute!!) {
+                        composable("list") {
+                            MainScreen(
+                                viewModel = viewModel,
+                                allFolders = folders,
+                                folderColorRepo = folderColorRepo,
+                                themeSettingsRepository = themeSettingsRepository,
+                                onNoteClick = openNote,
+                                onFolderClick = { folderId -> navController.navigate("folder/$folderId") }
+                            )
+                        }
+                        composable("edit/{noteId}", arguments = listOf(navArgument("noteId") { type = NavType.IntType })) { backStackEntry ->
+                            val noteId = backStackEntry.arguments?.getInt("noteId") ?: -1
+                            NoteEditScreen(
+                                noteId = noteId,
+                                viewModel = viewModel,
+                                onBack = {
+                                    lastOpenNoteRepository.clearLastOpenNoteId()
+                                    navController.popBackStack()
+                                }
+                            )
+                        }
+                        composable("folder/{folderId}",
+                            arguments = listOf(navArgument("folderId") { type = NavType.IntType })
+                        ) { backStackEntry ->
+                            val folderId = backStackEntry.arguments?.getInt("folderId") ?: -1
+                            val folderName = folders.firstOrNull { it.id == folderId }?.name ?: "Folder"
+                            FolderDetailScreen(
+                                folderId = folderId,
+                                folderName = folderName,
+                                viewModel = viewModel,
+                                allFolders = folders,
+                                folderColorRepo = folderColorRepo,
+                                onFolderClick = { childFolderId -> navController.navigate("folder/$childFolderId") },
+                                onNoteClick = openNote,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
                     }
                 }
             }
@@ -141,6 +178,7 @@ fun MainScreen(
     onFolderClick: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    val lastOpenNoteRepository = remember(context) { LastOpenNoteRepository(context) }
     val currentThemeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
     var showCreateChooser by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -488,6 +526,9 @@ fun MainScreen(
                 title = "Delete Note",
                 message = "Are you sure you want to delete the note \"${note.title}\"?",
                 onConfirm = {
+                    if (lastOpenNoteRepository.lastOpenNoteId() == note.id) {
+                        lastOpenNoteRepository.clearLastOpenNoteId()
+                    }
                     viewModel.deleteNote(note)
                     noteToDelete = null
                 },
@@ -589,6 +630,7 @@ fun FolderDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val lastOpenNoteRepository = remember(context) { LastOpenNoteRepository(context) }
     val currentFolder = remember(allFolders, folderId) { allFolders.firstOrNull { it.id == folderId } }
     val folderPath = remember(allFolders, folderId, folderName) {
         currentFolder?.let { buildFolderBreadcrumb(allFolders, it) } ?: listOf("Home", folderName)
@@ -689,7 +731,9 @@ fun FolderDetailScreen(
                     columns = GridCells.Fixed(4),
                     onChangeColor = { folderToColor = it },
                     folderColorRepo = folderColorRepo,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
                 )
             }
 
@@ -709,7 +753,9 @@ fun FolderDetailScreen(
                     onNoteChangeStyle = { noteToChangeStyle = it },
                     onNoteDelete = { noteToDelete = it },
                     onNoteMoveToFolder = { noteToMove = it },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
                 )
             }
         }
@@ -813,6 +859,9 @@ fun FolderDetailScreen(
                 title = "Delete List",
                 message = "Are you sure you want to delete the list \"${note.title}\" from this folder?",
                 onConfirm = {
+                    if (lastOpenNoteRepository.lastOpenNoteId() == note.id) {
+                        lastOpenNoteRepository.clearLastOpenNoteId()
+                    }
                     viewModel.deleteNote(note)
                     noteToDelete = null
                 },

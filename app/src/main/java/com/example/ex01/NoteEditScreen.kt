@@ -4,11 +4,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,9 +39,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -124,11 +133,40 @@ fun NoteEditScreen(
             keyboardController?.show()
         }
     }
-    LaunchedEffect(noteResolved, note) {
-        if (noteResolved && note == null) {
-            onBack()
+
+    if (note == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(text = if (noteResolved) "Note not available" else "Loading note…") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                if (noteResolved) {
+                    Text(
+                        text = "This note could not be loaded.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    CircularProgressIndicator()
+                }
+            }
         }
+        return
     }
+
     val persistCurrentDraft: (Boolean) -> Unit = { shouldNavigateBack ->
         note?.let { currentNote ->
             scope.launch {
@@ -210,6 +248,8 @@ fun NoteEditScreen(
                     onUnderlineClick = richTextController::toggleUnderline,
                     onStrikethroughClick = richTextController::toggleStrikethrough,
                     onBulletClick = richTextController::toggleBullet,
+                    onIndentClick = richTextController::indent,
+                    onOutdentClick = richTextController::outdent,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -352,19 +392,72 @@ private fun RichTextBodyEditor(
     onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier) {
+    val scrollState = rememberScrollState()
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    var isFocused by remember { mutableStateOf(false) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var resumeRevealTick by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding() + 96.dp
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resumeRevealTick++
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isFocused, value.selection, textLayoutResult, imeBottomPx) {
+        if (!isFocused || imeBottomPx == 0) return@LaunchedEffect
+        val layoutResult = textLayoutResult ?: return@LaunchedEffect
+        val cursorOffset = value.selection.end.coerceIn(0, value.text.length)
+        val transformedCursorOffset = richTextVisualTransformation()
+            .filter(AnnotatedString(value.text))
+            .offsetMapping
+            .originalToTransformed(cursorOffset)
+            .coerceIn(0, layoutResult.layoutInput.text.text.length)
+        bringIntoViewRequester.bringIntoView(layoutResult.getCursorRect(transformedCursorOffset))
+    }
+
+    LaunchedEffect(resumeRevealTick, isFocused, textLayoutResult, imeBottomPx) {
+        if (!isFocused || imeBottomPx == 0) return@LaunchedEffect
+        val layoutResult = textLayoutResult ?: return@LaunchedEffect
+        withFrameNanos { }
+        val cursorOffset = value.selection.end.coerceIn(0, value.text.length)
+        val transformedCursorOffset = richTextVisualTransformation()
+            .filter(AnnotatedString(value.text))
+            .offsetMapping
+            .originalToTransformed(cursorOffset)
+            .coerceIn(0, layoutResult.layoutInput.text.text.length)
+        bringIntoViewRequester.bringIntoView(layoutResult.getCursorRect(transformedCursorOffset))
+    }
+
+    Column(modifier = modifier.verticalScroll(scrollState)) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             visualTransformation = richTextVisualTransformation(),
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .bringIntoViewRequester(bringIntoViewRequester)
+                .onFocusChanged {
+                    if (it.isFocused && !isFocused) {
+                        resumeRevealTick++
+                    }
+                    isFocused = it.isFocused
+                },
+            onTextLayout = { textLayoutResult = it },
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
             decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.text.isBlank()) {
                         Text(
                             text = "Write your note",
@@ -376,5 +469,6 @@ private fun RichTextBodyEditor(
                 }
             }
         )
+        Spacer(modifier = Modifier.height(imeBottomPadding))
     }
 }

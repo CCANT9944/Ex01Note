@@ -10,9 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.roundToInt
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -31,12 +29,12 @@ fun NoteGrid(
     viewModel: NoteViewModel,
     onNoteClick: (Int) -> Unit,
     folderBounds: MutableMap<Int, androidx.compose.ui.geometry.Rect>,
+    modifier: Modifier = Modifier,
     onNoteRename: (Note) -> Unit,
     onNotePreview: (Note) -> Unit = {},
     onNoteChangeStyle: (Note) -> Unit = {},
     onNoteDelete: (Note) -> Unit,
-    onNoteMoveToFolder: (Note) -> Unit = {},
-    modifier: Modifier = Modifier
+    onNoteMoveToFolder: (Note) -> Unit = {}
 ) {
     val context = LocalContext.current
     val collapsedNotesRepo = remember(context) { CollapsedNotesRepository(context) }
@@ -110,6 +108,7 @@ fun FolderGrid(
     folders: List<Folder>,
     viewModel: NoteViewModel,
     onFolderClick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
     onMenuClick: (Folder) -> Unit = {},
     onRename: (Folder) -> Unit,
     onDelete: (Folder) -> Unit,
@@ -119,8 +118,7 @@ fun FolderGrid(
     folderBounds: MutableMap<Int, androidx.compose.ui.geometry.Rect>,
     columns: GridCells = GridCells.Fixed(2),
     showMenu: Boolean = true,
-    folderIconTint: (Folder) -> androidx.compose.ui.graphics.Color = { Color.Unspecified },
-    modifier: Modifier = Modifier
+    folderIconTint: (Folder) -> Color = { Color.Unspecified }
 ) {
     val context = LocalContext.current
     val collapsedRepo = remember(context) { CollapsedFoldersRepository(context) }

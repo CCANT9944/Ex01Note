@@ -1,31 +1,20 @@
 # ex01 Notes App
 
-ex01 is an Android notes app for keeping folders, free-text notes, and lists organized in one place.
+`ex01` is an Android notes app for keeping folders, notes, and lists organized in one place.
 
-It is built with Kotlin, Jetpack Compose, Room, and Navigation Compose.
+It is designed to feel fast and practical: you can open a note, edit it, format it, and trust that your latest changes are saved when you leave the screen.
 
-## What’s new
-
-- A compact settings button now sits on the left side of Home
-- Theme switching is faster with a one-tap light/dark toggle in settings
-- Drafts are saved automatically when the app is backgrounded or closed
-- Free-text notes now support rich-text styling, including bullets
-- Folder cards were refined for better readability in light mode
-- Edge-to-edge layout remains enabled, with improved status bar visibility in light mode
-
-## Main features
+## What you can do
 
 - Create folders and subfolders to keep content grouped
-- Create free-text notes and checklist-style lists
-- Organize everything in a nested folder tree
-- Expand or collapse folders and previews as needed
-- Rename, delete, and move folders, notes, and lists
-- Preview notes and lists directly from the Home screen
-- Edit free-text notes with live rich-text formatting
-- Use formatting tools for bold, italic, underline, strikethrough, and bullets
-- Keep recent edits safe with automatic draft saving
+- Create free-text notes with rich-text formatting tools
+- Create checklist-style lists for simple task tracking
+- Move, rename, delete, and organize your content from the Home screen
+- Collapse or expand folders and previews when you want a cleaner view
+- Switch between light and dark themes from settings
+- Reopen the last note you were editing when you come back to the app
 
-## Rich-text formatting
+## Rich-text notes
 
 Free-text notes support:
 
@@ -34,25 +23,27 @@ Free-text notes support:
 - Underline
 - Strikethrough
 - Bullets
+- Indent and outdent
 
-Formatting is applied from the toolbar while editing a note. Select text, then tap a formatting button to apply or remove it.
+Select the text you want, then tap a toolbar button to apply or remove formatting. The toolbar is designed to work together as one set of note-editing tools.
 
-## Notes and layout
+Bullets work for free-text notes only.
 
-- Folders group related notes and lists together
-- Notes are for free-text content with rich-text styling
-- Lists are for checklist-style content and other simple item lists
-- The Home screen shows folder cards and note cards with quick actions
-- The editor saves your draft when you leave the app, so recent changes are not lost
+## Notes and saving
+
+- The editor saves recent changes automatically when the app is backgrounded or closed
+- The editor keeps the cursor visible above the keyboard when you return to a note
+- The notes editor is focused on quick, simple editing rather than a full document editor
+- The Home screen shows your folders and notes with quick actions for everyday use
 
 ## Theme
 
-The app supports two theme modes:
+The app includes:
 
-- Light
-- Dark
+- Light mode
+- Dark mode
 
-You can switch theme mode from the settings panel on the Home screen.
+You can toggle the theme from the settings button on the Home screen.
 
 ## Getting started
 
@@ -93,7 +84,6 @@ or:
 
 ## Development notes
 
-- The app is designed for local use and development.
-- The rich-text editor focuses on the visible toolbar actions rather than a full document editor.
-- Folder, note, and list layouts are still being refined for consistency and readability.
+- The app is still evolving, and the UI is being refined over time.
+- The rich-text editor focuses on the current toolbar actions and note-editing flow.
 

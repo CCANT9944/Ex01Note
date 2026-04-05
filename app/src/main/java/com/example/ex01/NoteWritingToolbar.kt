@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
+import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
@@ -21,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
@@ -32,6 +35,8 @@ fun NoteWritingToolbar(
     onUnderlineClick: () -> Unit,
     onStrikethroughClick: () -> Unit,
     onBulletClick: () -> Unit,
+    onIndentClick: () -> Unit,
+    onOutdentClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val formattingState = richTextFormattingState(value)
@@ -80,6 +85,20 @@ fun NoteWritingToolbar(
                 onClick = onBulletClick,
                 icon = Icons.AutoMirrored.Filled.FormatListBulleted
             )
+            FormattingToolButton(
+                label = "Indent",
+                active = false,
+                onClick = onIndentClick,
+                enabled = true,
+                icon = Icons.AutoMirrored.Filled.FormatIndentIncrease
+            )
+            FormattingToolButton(
+                label = "Outdent",
+                active = formattingState.indentActive,
+                onClick = onOutdentClick,
+                enabled = formattingState.indentActive,
+                icon = Icons.AutoMirrored.Filled.FormatIndentDecrease
+            )
         }
     }
 }
@@ -89,14 +108,19 @@ private fun FormattingToolButton(
     label: String,
     active: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
 ) {
-    val containerColor = if (active) {
+    val containerColor = if (!enabled) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    } else if (active) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
         MaterialTheme.colorScheme.surface
     }
-    val contentColor = if (active) {
+    val contentColor = if (!enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    } else if (active) {
         MaterialTheme.colorScheme.onPrimaryContainer
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
@@ -105,12 +129,15 @@ private fun FormattingToolButton(
     Surface(
         modifier = Modifier
             .size(36.dp)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick)
+            .graphicsLayer(alpha = if (enabled) 1f else 0.65f),
         shape = RoundedCornerShape(10.dp),
         color = containerColor,
         border = BorderStroke(
             1.dp,
-            if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+            if (!enabled) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            else if (active) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {

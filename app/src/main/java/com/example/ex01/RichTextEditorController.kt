@@ -35,6 +35,14 @@ internal class RichTextEditorController(initialValue: TextFieldValue) {
     fun toggleBullet() {
         value = toggleBulletFormatting(value)
     }
+
+    fun indent() {
+        value = indentSelectedLines(value)
+    }
+
+    fun outdent() {
+        value = outdentSelectedLines(value)
+    }
 }
 
 @Composable
