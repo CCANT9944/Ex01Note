@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatIndentDecrease
 import androidx.compose.material.icons.automirrored.filled.FormatIndentIncrease
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatStrikethrough
@@ -30,6 +31,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun NoteWritingToolbar(
     value: TextFieldValue,
+    canUndo: Boolean,
+    onUndoClick: () -> Unit,
     onBoldClick: () -> Unit,
     onItalicClick: () -> Unit,
     onUnderlineClick: () -> Unit,
@@ -55,6 +58,13 @@ fun NoteWritingToolbar(
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.Start),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            FormattingToolButton(
+                label = "Undo",
+                active = false,
+                onClick = onUndoClick,
+                enabled = canUndo,
+                icon = Icons.AutoMirrored.Filled.Undo
+            )
             FormattingToolButton(
                 label = "Bold",
                 active = formattingState.boldActive,

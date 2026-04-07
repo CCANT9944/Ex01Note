@@ -1,23 +1,25 @@
 # ex01 Notes App
 
-`ex01` is an Android notes app for keeping folders, notes, and lists organized in one place.
+`ex01` is a simple Android notes app for keeping folders, notes, and lists organized in one place.
 
-It is designed to feel fast and practical: you can open a note, edit it, format it, and trust that your latest changes are saved when you leave the screen.
+It is built to feel quick and practical: open Home, edit a note, format it, and rely on the app to save your latest changes when you leave the screen.
 
 ## What you can do
 
-- Create folders and subfolders to keep content grouped
-- Create free-text notes with rich-text formatting tools
+- Organize content with folders and subfolders
+- Write free-text notes with multiple pages and rich-text formatting tools
 - Create checklist-style lists for simple task tracking
-- Move, rename, delete, and organize your content from the Home screen
-- Collapse or expand folders and previews when you want a cleaner view
-- Switch between light and dark themes from settings
-- Reopen the last note you were editing when you come back to the app
+- Move, rename, delete, and manage items from the Home screen
+- Collapse or expand folders and previews for a cleaner view
+- Switch between light and dark themes from Settings
+- Open to Home on a fresh launch, then continue where you left off when you switch away and come back
 
-## Rich-text notes
+## Rich-text editing
 
 Free-text notes support:
 
+- Multiple pages
+- Undo
 - Bold
 - Italic
 - Underline
@@ -25,14 +27,16 @@ Free-text notes support:
 - Bullets
 - Indent and outdent
 
-Select the text you want, then tap a toolbar button to apply or remove formatting. The toolbar is designed to work together as one set of note-editing tools.
+Select the text you want, then tap a toolbar button to apply, remove, or undo formatting changes. The full-width toolbar is designed to work together as one note-editing set.
 
 Bullets work for free-text notes only.
 
-## Notes and saving
+## Editing and saving
 
-- The editor saves recent changes automatically when the app is backgrounded or closed
+- Recent changes are saved automatically when the app is backgrounded or closed
+- The app starts on Home when launched fresh, but keeps your current screen when you switch apps and return
 - The editor keeps the cursor visible above the keyboard when you return to a note
+- Typing is grouped into sensible undo steps, so Undo stays useful without stepping through every character
 - The notes editor is focused on quick, simple editing rather than a full document editor
 - The Home screen shows your folders and notes with quick actions for everyday use
 
@@ -85,5 +89,5 @@ or:
 ## Development notes
 
 - The app is still evolving, and the UI is being refined over time.
-- The rich-text editor focuses on the current toolbar actions and note-editing flow.
+- The rich-text editor focuses on the current toolbar actions, undo flow, and note-editing experience.
 

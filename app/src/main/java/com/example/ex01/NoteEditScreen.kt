@@ -1,8 +1,19 @@
 ﻿package com.example.ex01
+
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -12,54 +23,46 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-@OptIn(ExperimentalMaterial3Api::class)
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteEditScreen(
     noteId: Int,
@@ -68,85 +71,66 @@ fun NoteEditScreen(
 ) {
     val note by viewModel.getNote(noteId).collectAsStateWithLifecycle(initialValue = null)
     val items by viewModel.getItems(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT && note?.listStyle == NoteListStyles.CHECKLIST
+
     var noteResolved by remember(noteId) { mutableStateOf(false) }
     var draftInitialized by rememberSaveable(noteId) { mutableStateOf(false) }
     var noteTitle by rememberSaveable(noteId) { mutableStateOf("") }
-    var draftBodyText by rememberSaveable(noteId) { mutableStateOf("") }
-    val richTextController = rememberRichTextEditorController(TextFieldValue(""))
+    var serializedPagesBody by rememberSaveable(noteId) { mutableStateOf("") }
+    var selectedPageIndex by rememberSaveable(noteId) { mutableIntStateOf(0) }
+    val pageControllers = remember(noteId) { mutableMapOf<Int, RichTextEditorController>() }
     var newItemText by rememberSaveable(noteId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
-    val addItemFocusRequester = remember { FocusRequester() }
-    val bodyFocusRequester = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var pendingAddItemReset by rememberSaveable(noteId) { mutableStateOf(false) }
-    val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT && note?.listStyle == NoteListStyles.CHECKLIST
-    val submitItem = {
-        val trimmedText = newItemText.text.trim()
-        if (trimmedText.isNotEmpty()) {
-            viewModel.addItem(noteId, trimmedText)
-            pendingAddItemReset = true
-        }
-    }
-    LaunchedEffect(pendingAddItemReset, noteId) {
-        if (pendingAddItemReset) {
-            withFrameNanos { }
-            newItemText = TextFieldValue("", selection = TextRange(0))
-            focusManager.clearFocus(force = true)
-            addItemFocusRequester.requestFocus()
-            keyboardController?.show()
-            pendingAddItemReset = false
-        }
-    }
-    LaunchedEffect(note?.id, note?.kind, note?.title, note?.body) {
-        note?.let {
+
+    LaunchedEffect(note?.id, note?.title, note?.body, showBodyEditor) {
+        val currentNote = note
+        if (currentNote != null) {
             noteResolved = true
             if (!draftInitialized) {
-                noteTitle = it.title
-                val loadedBody = if (showBodyEditor) {
-                    withContext(Dispatchers.Default) {
-                        collapseEmptyFormattingSpans(
-                            normalizeRichTextMarkup(
-                                TextFieldValue(it.body, selection = TextRange(it.body.length))
-                            )
-                        )
-                    }
-                } else {
-                    TextFieldValue(it.body, selection = TextRange(it.body.length))
-                }
-                draftBodyText = loadedBody.text
-                if (showBodyEditor) {
-                    richTextController.updateValue(loadedBody)
-                }
+                noteTitle = currentNote.title
+                serializedPagesBody = currentNote.body
+                selectedPageIndex = 0
+                pageControllers.clear()
                 draftInitialized = true
-            } else if (showBodyEditor) {
-                richTextController.updateValue(
-                    TextFieldValue(draftBodyText, selection = TextRange(draftBodyText.length))
-                )
             }
-        }
-        if (showBodyEditor) {
-            bodyFocusRequester.requestFocus()
-        } else if (note != null) {
-            addItemFocusRequester.requestFocus()
-            keyboardController?.show()
         }
     }
 
-    if (note == null) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(text = if (noteResolved) "Note not available" else "Loading note…") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
+    fun persistDraft() {
+        val currentNote = note ?: return
+        val updatedNote = currentNote.copy(
+            title = noteTitle,
+            body = if (showBodyEditor) serializedPagesBody else currentNote.body
+        )
+        viewModel.updateNote(updatedNote)
+    }
+
+    BackHandler(enabled = note != null) {
+        persistDraft()
+        onBack()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = if (noteResolved) noteTitle.ifBlank { "Untitled note" } else "Loading note…",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        persistDraft()
+                        onBack()
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                )
-            }
-        ) { padding ->
+                }
+            )
+        }
+    ) { padding ->
+        if (note == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -163,103 +147,284 @@ fun NoteEditScreen(
                     CircularProgressIndicator()
                 }
             }
-        }
-        return
-    }
-
-    val persistCurrentDraft: (Boolean) -> Unit = { shouldNavigateBack ->
-        note?.let { currentNote ->
-            scope.launch {
-                val sanitizedBody = if (showBodyEditor) {
-                    withContext(Dispatchers.Default) {
-                        collapseEmptyFormattingSpans(
-                            normalizeRichTextMarkup(richTextController.value),
-                            preserveCollapsedSelectionSpan = false
-                        ).text
-                    }
-                } else {
-                    currentNote.body
-                }
-                if (noteTitle != currentNote.title) {
-                    viewModel.updateNote(
-                        currentNote.copy(
-                            title = noteTitle,
-                            body = sanitizedBody
-                        )
-                    )
-                } else if (showBodyEditor && sanitizedBody != currentNote.body) {
-                    viewModel.updateNote(currentNote.copy(body = sanitizedBody))
-                }
-                if (shouldNavigateBack) {
-                    onBack()
-                }
-            }
-        } ?: run {
-            if (shouldNavigateBack) {
-                onBack()
-            }
-        }
-    }
-    val persistCurrentDraftLatest by rememberUpdatedState(newValue = persistCurrentDraft)
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                persistCurrentDraftLatest(false)
-            }
+            return@Scaffold
         }
 
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    BackHandler { persistCurrentDraft(true) }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = noteTitle.ifBlank { note?.title ?: "Untitled note" },
-                        maxLines = 1
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { persistCurrentDraft(true) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 8.dp)
-                .imePadding()
+                .padding(top = 0.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+
             if (showBodyEditor) {
-                NoteWritingToolbar(
-                    value = richTextController.value,
-                    onBoldClick = richTextController::toggleBold,
-                    onItalicClick = richTextController::toggleItalic,
-                    onUnderlineClick = richTextController::toggleUnderline,
-                    onStrikethroughClick = richTextController::toggleStrikethrough,
-                    onBulletClick = richTextController::toggleBullet,
-                    onIndentClick = richTextController::indent,
-                    onOutdentClick = richTextController::outdent,
-                    modifier = Modifier.fillMaxWidth()
+                PageBodyEditor(
+                    serializedPagesBody = serializedPagesBody,
+                    selectedPageIndex = selectedPageIndex,
+                    pageControllers = pageControllers,
+                    onSelectedPageIndexChange = { selectedPageIndex = it },
+                    onSerializedPagesBodyChange = { serializedPagesBody = it }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+            } else {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    ChecklistEditor(
+                        items = items,
+                        newItemText = newItemText,
+                        onNewItemTextChange = { newItemText = it },
+                        onAddItem = {
+                            val trimmedText = newItemText.text.trim()
+                            if (trimmedText.isNotEmpty()) {
+                                viewModel.addItem(noteId, trimmedText)
+                                newItemText = TextFieldValue("")
+                            }
+                        },
+                        onToggleItem = { item, checked -> viewModel.updateItem(item.copy(isChecked = checked)) },
+                        onEditItem = { item, nextText -> viewModel.updateItem(item.copy(text = nextText)) },
+                        onDeleteItem = { item -> viewModel.deleteItem(item) }
+                    )
+                }
             }
-            TextField(
-                value = noteTitle,
-                onValueChange = { noteTitle = it },
-                placeholder = { Text("Title", style = MaterialTheme.typography.headlineMedium) },
-                textStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PageBodyEditor(
+    serializedPagesBody: String,
+    selectedPageIndex: Int,
+    pageControllers: MutableMap<Int, RichTextEditorController>,
+    onSelectedPageIndexChange: (Int) -> Unit,
+    onSerializedPagesBodyChange: (String) -> Unit,
+) {
+    val pageBodies = splitNotePages(serializedPagesBody)
+    val safePageIndex = selectedPageIndex.coerceIn(0, pageBodies.lastIndex)
+    val pagerState = rememberPagerState(initialPage = safePageIndex, pageCount = { pageBodies.size })
+
+    LaunchedEffect(pageBodies.size) {
+        if (selectedPageIndex > pageBodies.lastIndex) {
+            onSelectedPageIndexChange(pageBodies.lastIndex)
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != selectedPageIndex) {
+            onSelectedPageIndexChange(pagerState.currentPage)
+        }
+    }
+
+    LaunchedEffect(selectedPageIndex, pageBodies.size) {
+        val targetPage = selectedPageIndex.coerceIn(0, pageBodies.lastIndex)
+        if (pagerState.currentPage != targetPage) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
+    val activeController = pageControllers.getOrPut(safePageIndex) {
+        RichTextEditorController(
+            TextFieldValue(
+                pageBodies[safePageIndex],
+                selection = TextRange(pageBodies[safePageIndex].length)
+            )
+        )
+    }
+
+    fun TextRange.coerceToTextLength(textLength: Int): TextRange {
+        return TextRange(
+            start = start.coerceIn(0, textLength),
+            end = end.coerceIn(0, textLength)
+        )
+    }
+
+    LaunchedEffect(pageBodies[safePageIndex]) {
+        val pageText = pageBodies[safePageIndex]
+        if (activeController.value.text != pageText) {
+            activeController.replaceValue(
+                TextFieldValue(
+                    pageText,
+                    selection = activeController.value.selection.coerceToTextLength(pageText.length)
+                )
+            )
+        }
+    }
+
+    fun commitActivePage() {
+        onSerializedPagesBodyChange(
+            replaceNotePage(serializedPagesBody, safePageIndex, activeController.value.text)
+        )
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        NoteWritingToolbar(
+            value = activeController.value,
+            canUndo = activeController.canUndo,
+            onUndoClick = {
+                if (activeController.undo()) {
+                    commitActivePage()
+                }
+            },
+            onBoldClick = {
+                activeController.toggleBold()
+                commitActivePage()
+            },
+            onItalicClick = {
+                activeController.toggleItalic()
+                commitActivePage()
+            },
+            onUnderlineClick = {
+                activeController.toggleUnderline()
+                commitActivePage()
+            },
+            onStrikethroughClick = {
+                activeController.toggleStrikethrough()
+                commitActivePage()
+            },
+            onBulletClick = {
+                activeController.toggleBullet()
+                commitActivePage()
+            },
+            onIndentClick = {
+                activeController.indent()
+                commitActivePage()
+            },
+            onOutdentClick = {
+                activeController.outdent()
+                commitActivePage()
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
+            androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                itemsIndexed(pageBodies) { index, pageBody ->
+                    val selected = index == safePageIndex
+
+                    if (selected) {
+                        Button(onClick = { onSelectedPageIndexChange(index) }) {
+                            Text("Page ${index + 1}")
+                        }
+                    } else {
+                        OutlinedButton(onClick = { onSelectedPageIndexChange(index) }) {
+                            Text("Page ${index + 1}")
+                        }
+                    }
+                }
+
+                item {
+                    OutlinedButton(onClick = {
+                        onSerializedPagesBodyChange(appendNotePage(serializedPagesBody))
+                        onSelectedPageIndexChange(pageBodies.size)
+                    }) {
+                        Text("+ Add page")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) { pageIndex ->
+                val pageText = pageBodies[pageIndex]
+                val pageController = pageControllers.getOrPut(pageIndex) {
+                    RichTextEditorController(
+                        TextFieldValue(pageText, selection = TextRange(pageText.length))
+                    )
+                }
+
+                LaunchedEffect(pageText) {
+                    if (pageController.value.text != pageText) {
+                        pageController.replaceValue(
+                            TextFieldValue(
+                                pageText,
+                                selection = pageController.value.selection.coerceToTextLength(pageText.length)
+                            )
+                        )
+                    }
+                }
+
+                RichTextBodyEditor(
+                    value = pageController.value,
+                    onValueChange = { next ->
+                        pageController.updateValue(next)
+                        onSerializedPagesBodyChange(replaceNotePage(serializedPagesBody, pageIndex, next.text))
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChecklistEditor(
+    items: List<NoteItem>,
+    newItemText: TextFieldValue,
+    onNewItemTextChange: (TextFieldValue) -> Unit,
+    onAddItem: () -> Unit,
+    onToggleItem: (NoteItem, Boolean) -> Unit,
+    onEditItem: (NoteItem, String) -> Unit,
+    onDeleteItem: (NoteItem) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = item.isChecked,
+                        onCheckedChange = { onToggleItem(item, it) }
+                    )
+                    TextField(
+                        value = item.text,
+                        onValueChange = { onEditItem(item, it) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                        )
+                    )
+                    IconButton(onClick = { onDeleteItem(item) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete item")
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = newItemText,
+                onValueChange = onNewItemTextChange,
+                placeholder = { Text("Add item") },
+                modifier = Modifier.weight(1f),
                 singleLine = true,
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -269,123 +434,14 @@ fun NoteEditScreen(
                     disabledContainerColor = Color.Transparent,
                 )
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (showBodyEditor) {
-                RichTextBodyEditor(
-                    value = richTextController.value,
-                    onValueChange = { next ->
-                        richTextController.updateValue(next)
-                        draftBodyText = next.text
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .focusRequester(bodyFocusRequester)
-                )
-            } else {
-                val displayItems = items.sortedByDescending { it.id }
-                val isChecklist = note?.listStyle == NoteListStyles.CHECKLIST
-                val isBulleted = note?.listStyle == NoteListStyles.BULLETED
-                val isNumbered = note?.listStyle == NoteListStyles.NUMBERED
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = submitItem) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = "Add item"
-                        )
-                    }
-                    BasicTextField(
-                        value = newItemText,
-                        onValueChange = { newItemText = it },
-                        singleLine = true,
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onDone = { submitItem() }
-                        ),
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(addItemFocusRequester),
-                        decorationBox = { innerTextField ->
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                if (newItemText.text.isBlank()) {
-                                    Text(
-                                        text = "Add item",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        }
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                if (displayItems.isNotEmpty()) {
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        itemsIndexed(displayItems, key = { _, item -> item.id }) { index, item ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                if (isChecklist) {
-                                    Checkbox(
-                                        checked = item.isChecked,
-                                        onCheckedChange = { checked ->
-                                            viewModel.updateItem(item.copy(isChecked = checked))
-                                        }
-                                    )
-                                } else {
-                                    val leadingLabel = when {
-                                        isBulleted -> "•"
-                                        isNumbered -> "${index + 1}."
-                                        else -> null
-                                    }
-                                    if (leadingLabel != null) {
-                                        Text(
-                                            text = leadingLabel,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.widthIn(min = 18.dp).padding(end = 4.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = item.text,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textDecoration = if (isChecklist && item.isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-                                    color = if (isChecklist && item.isChecked) {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                                IconButton(onClick = { viewModel.deleteItem(item) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Item")
-                                }
-                            }
-                        }
-                    }
-                }
+            Spacer(modifier = Modifier.height(0.dp))
+            IconButton(onClick = onAddItem) {
+                Icon(Icons.Filled.Add, contentDescription = "Add item")
             }
         }
     }
 }
+
 @Composable
 private fun RichTextBodyEditor(
     value: TextFieldValue,
@@ -396,11 +452,10 @@ private fun RichTextBodyEditor(
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var isFocused by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    var resumeRevealTick by remember { mutableStateOf(0) }
+    var resumeRevealTick by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val density = LocalDensity.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding() + 96.dp
+    val imeBottomPx = 1
+    val imeBottomPadding = 24.dp
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

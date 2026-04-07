@@ -438,7 +438,7 @@ fun NoteCard(
                     Spacer(Modifier.height(4.dp))
 
                     if (bodyStyleNote) {
-                        val previewBody = note.body.trim()
+                        val previewBody = notePageBody(note.body, 0).trim()
                         val renderedPreviewBody by produceState<AnnotatedString?>(initialValue = null, previewBody) {
                             value = withContext(Dispatchers.Default) {
                                 renderRichTextMarkup(previewBody)

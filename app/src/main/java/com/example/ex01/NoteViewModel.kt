@@ -74,10 +74,10 @@ class NoteViewModel(private val dao: NoteDao) : ViewModel() {
                 val isReturningToPlainBodyMode = note.listStyle != NoteListStyles.CHECKLIST && listStyle == NoteListStyles.CHECKLIST
 
                 if (isLeavingPlainBodyMode && currentItems.isEmpty()) {
-                    val bodyLines = note.body.lineSequence()
+                    val bodyLines = splitNotePages(note.body)
+                        .flatMap { pageBody -> pageBody.lineSequence().toList() }
                         .map { it.trim() }
                         .filter { it.isNotBlank() }
-                        .toList()
 
                     val sourceTexts = if (bodyLines.isNotEmpty()) bodyLines else listOf(note.body.trim()).filter { it.isNotBlank() }
                     sourceTexts.forEach { text ->
