@@ -20,7 +20,7 @@ class NotePagesTest {
 
         val updated = replaceNotePage(serialized, 2, "Third page")
 
-        assertEquals("First page\u000C\u000CThird page", updated)
+        assertEquals("First page\u000C\u000C\u000BPage\u000BThird page", updated)
         assertEquals(3, splitNotePages(updated).size)
         assertEquals("First page", notePageBody(updated, 0))
         assertEquals("", notePageBody(updated, 1))
@@ -34,4 +34,3 @@ class NotePagesTest {
         assertEquals("Preview page", notePageBody(serialized, 0))
     }
 }
-
