@@ -2,15 +2,19 @@
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -18,7 +22,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -32,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -45,22 +54,42 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -71,7 +100,7 @@ fun NoteEditScreen(
 ) {
     val note by viewModel.getNote(noteId).collectAsStateWithLifecycle(initialValue = null)
     val items by viewModel.getItems(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
-    val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT && note?.listStyle == NoteListStyles.CHECKLIST
+    val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT
 
     var noteResolved by remember(noteId) { mutableStateOf(false) }
     var draftInitialized by rememberSaveable(noteId) { mutableStateOf(false) }
@@ -154,8 +183,8 @@ fun NoteEditScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(top = 0.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .imePadding(),
+            verticalArrangement = Arrangement.Top
         ) {
 
             if (showBodyEditor) {
@@ -167,23 +196,28 @@ fun NoteEditScreen(
                     onSerializedPagesBodyChange = { serializedPagesBody = it }
                 )
             } else {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    ChecklistEditor(
-                        items = items,
-                        newItemText = newItemText,
-                        onNewItemTextChange = { newItemText = it },
-                        onAddItem = {
-                            val trimmedText = newItemText.text.trim()
-                            if (trimmedText.isNotEmpty()) {
-                                viewModel.addItem(noteId, trimmedText)
-                                newItemText = TextFieldValue("")
-                            }
-                        },
-                        onToggleItem = { item, checked -> viewModel.updateItem(item.copy(isChecked = checked)) },
-                        onEditItem = { item, nextText -> viewModel.updateItem(item.copy(text = nextText)) },
-                        onDeleteItem = { item -> viewModel.deleteItem(item) }
-                    )
-                }
+                ChecklistEditor(
+                    listStyle = note?.listStyle ?: NoteListStyles.CHECKLIST,
+                    items = items,
+                    newItemText = newItemText,
+                    onNewItemTextChange = { newItemText = it },
+                    onAddItem = {
+                        val trimmedText = newItemText.text.trim()
+                        if (trimmedText.isNotEmpty()) {
+                            viewModel.addItem(noteId, trimmedText)
+                            newItemText = TextFieldValue("")
+                            true
+                        } else {
+                            false
+                        }
+                    },
+                    onToggleItem = { item, checked -> viewModel.updateItem(item.copy(isChecked = checked)) },
+                    onEditItem = { item, nextText -> viewModel.updateItem(item.copy(text = nextText)) },
+                    onDeleteItem = { item -> viewModel.deleteItem(item) },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                )
             }
         }
     }
@@ -372,43 +406,134 @@ private fun PageBodyEditor(
 
 @Composable
 private fun ChecklistEditor(
+    listStyle: String,
     items: List<NoteItem>,
     newItemText: TextFieldValue,
     onNewItemTextChange: (TextFieldValue) -> Unit,
-    onAddItem: () -> Unit,
+    onAddItem: () -> Boolean,
     onToggleItem: (NoteItem, Boolean) -> Unit,
     onEditItem: (NoteItem, String) -> Unit,
     onDeleteItem: (NoteItem) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            itemsIndexed(items, key = { _, item -> item.id }) { _, item ->
-                androidx.compose.foundation.layout.Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = item.isChecked,
-                        onCheckedChange = { onToggleItem(item, it) }
-                    )
-                    TextField(
-                        value = item.text,
-                        onValueChange = { onEditItem(item, it) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            disabledContainerColor = Color.Transparent,
+    val density = LocalDensity.current
+    val addItemFocusRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    var addItemIsFocused by remember { mutableStateOf(false) }
+    
+    val imeInsets = WindowInsets.ime
+    val imeBottomPx = imeInsets.getBottom(density)
+    
+    var revealChecklistEndRequested by remember { mutableStateOf(false) }
+    var pendingAddedItemCount by remember { mutableIntStateOf(-1) }
+
+    fun submitNewItem() {
+        val added = onAddItem()
+        if (added) {
+            pendingAddedItemCount = items.size + 1
+        }
+        revealChecklistEndRequested = true
+    }
+
+    LaunchedEffect(imeBottomPx, addItemIsFocused, items.size, pendingAddedItemCount, revealChecklistEndRequested) {
+        if (!revealChecklistEndRequested || !addItemIsFocused || imeBottomPx <= 0) {
+            return@LaunchedEffect
+        }
+
+        if (pendingAddedItemCount != -1 && items.size < pendingAddedItemCount) {
+            return@LaunchedEffect
+        }
+
+        if (items.isNotEmpty()) {
+            withFrameNanos { }
+            listState.animateScrollToItem(items.lastIndex)
+        }
+
+        pendingAddedItemCount = -1
+        revealChecklistEndRequested = false
+    }
+
+    LaunchedEffect(imeBottomPx, addItemIsFocused) {
+        if (addItemIsFocused && imeBottomPx > 0) {
+            revealChecklistEndRequested = true
+        }
+    }
+
+    Column(modifier = modifier) {
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                    val rowBringIntoViewRequester = remember(item.id) { BringIntoViewRequester() }
+
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        var rowIsFocused by remember(item.id) { mutableStateOf(false) }
+
+                        LaunchedEffect(rowIsFocused) {
+                            if (rowIsFocused) {
+                                withFrameNanos { }
+                                rowBringIntoViewRequester.bringIntoView()
+                            }
+                        }
+
+                        if (listStyle == NoteListStyles.CHECKLIST) {
+                            Checkbox(
+                                checked = item.isChecked,
+                                onCheckedChange = { onToggleItem(item, it) }
+                            )
+                        } else {
+                            val leadingLabel = when (listStyle) {
+                                NoteListStyles.BULLETED -> "•"
+                                NoteListStyles.NUMBERED -> "${index + 1}."
+                                else -> ""
+                            }
+                            Text(
+                                text = leadingLabel,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                        }
+                        
+                        var textValue by remember(item.id) { mutableStateOf(TextFieldValue(item.text)) }
+                        LaunchedEffect(item.text) {
+                            if (textValue.text != item.text) {
+                                textValue = textValue.copy(text = item.text)
+                            }
+                        }
+
+                        TextField(
+                            value = textValue,
+                            onValueChange = { 
+                                textValue = it
+                                onEditItem(item, it.text)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .bringIntoViewRequester(rowBringIntoViewRequester)
+                                .onFocusChanged { rowIsFocused = it.isFocused },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                textDecoration = if (listStyle == NoteListStyles.CHECKLIST && item.isChecked) TextDecoration.LineThrough else null,
+                                color = if (listStyle == NoteListStyles.CHECKLIST && item.isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                            ),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                            )
                         )
-                    )
-                    IconButton(onClick = { onDeleteItem(item) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Delete item")
+                        IconButton(onClick = { onDeleteItem(item) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete item")
+                        }
                     }
                 }
             }
@@ -416,27 +541,54 @@ private fun ChecklistEditor(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        androidx.compose.foundation.layout.Row(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            tonalElevation = 2.dp,
+            shadowElevation = 8.dp
         ) {
-            TextField(
-                value = newItemText,
-                onValueChange = onNewItemTextChange,
-                placeholder = { Text("Add item") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = newItemText,
+                    onValueChange = onNewItemTextChange,
+                    placeholder = { Text("Add item") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(addItemFocusRequester)
+                        .onFocusChanged { focusState ->
+                            val isFocused = focusState.isFocused
+                            if (isFocused && !addItemIsFocused) {
+                                revealChecklistEndRequested = true
+                            }
+                            addItemIsFocused = isFocused
+                        },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { submitNewItem() }
+                    ),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                    )
                 )
-            )
-            Spacer(modifier = Modifier.height(0.dp))
-            IconButton(onClick = onAddItem) {
-                Icon(Icons.Filled.Add, contentDescription = "Add item")
+                IconButton(onClick = { submitNewItem() }, modifier = Modifier.focusProperties { canFocus = false }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add item")
+                }
             }
         }
     }
@@ -448,14 +600,18 @@ private fun RichTextBodyEditor(
     onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val bottomRevealMargin = 96.dp
     val scrollState = rememberScrollState()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var isFocused by remember { mutableStateOf(false) }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     var resumeRevealTick by remember { mutableIntStateOf(0) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val imeBottomPx = 1
-    val imeBottomPadding = 24.dp
+    val density = LocalDensity.current
+    
+    val imeInsets = WindowInsets.ime
+    val imeBottomPx = imeInsets.getBottom(density)
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -468,32 +624,46 @@ private fun RichTextBodyEditor(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(isFocused, value.selection, textLayoutResult, imeBottomPx) {
-        if (!isFocused || imeBottomPx == 0) return@LaunchedEffect
-        val layoutResult = textLayoutResult ?: return@LaunchedEffect
+    suspend fun revealCursor() {
+        val layoutResult = textLayoutResult ?: return
         val cursorOffset = value.selection.end.coerceIn(0, value.text.length)
         val transformedCursorOffset = richTextVisualTransformation()
             .filter(AnnotatedString(value.text))
             .offsetMapping
             .originalToTransformed(cursorOffset)
             .coerceIn(0, layoutResult.layoutInput.text.text.length)
-        bringIntoViewRequester.bringIntoView(layoutResult.getCursorRect(transformedCursorOffset))
+        val cursorRect = layoutResult.getCursorRect(transformedCursorOffset)
+        val bottomRevealMarginPx = with(density) { bottomRevealMargin.toPx() }
+        val visibleHeightPx = (viewportHeightPx - imeBottomPx).coerceAtLeast(0)
+        if (visibleHeightPx > 0) {
+            val targetScroll = (cursorRect.bottom - visibleHeightPx + bottomRevealMarginPx).toInt()
+                .coerceAtLeast(0)
+            if (targetScroll != scrollState.value) {
+                scrollState.animateScrollTo(targetScroll.coerceAtMost(scrollState.maxValue))
+            }
+        }
+        bringIntoViewRequester.bringIntoView(cursorRect.inflate(bottomRevealMarginPx))
+    }
+
+    LaunchedEffect(isFocused, value.selection, textLayoutResult) {
+        if (!isFocused) return@LaunchedEffect
+        withFrameNanos { }
+        revealCursor()
     }
 
     LaunchedEffect(resumeRevealTick, isFocused, textLayoutResult, imeBottomPx) {
         if (!isFocused || imeBottomPx == 0) return@LaunchedEffect
-        val layoutResult = textLayoutResult ?: return@LaunchedEffect
         withFrameNanos { }
-        val cursorOffset = value.selection.end.coerceIn(0, value.text.length)
-        val transformedCursorOffset = richTextVisualTransformation()
-            .filter(AnnotatedString(value.text))
-            .offsetMapping
-            .originalToTransformed(cursorOffset)
-            .coerceIn(0, layoutResult.layoutInput.text.text.length)
-        bringIntoViewRequester.bringIntoView(layoutResult.getCursorRect(transformedCursorOffset))
+        withFrameNanos { }
+        revealCursor()
     }
 
-    Column(modifier = modifier.verticalScroll(scrollState)) {
+    Column(
+        modifier = modifier
+            .onSizeChanged { viewportHeightPx = it.height }
+            .verticalScroll(scrollState)
+            .imePadding()
+    ) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -524,6 +694,10 @@ private fun RichTextBodyEditor(
                 }
             }
         )
-        Spacer(modifier = Modifier.height(imeBottomPadding))
+        Spacer(
+            modifier = Modifier.height(
+                bottomRevealMargin + with(density) { imeBottomPx.toDp() }
+            )
+        )
     }
 }

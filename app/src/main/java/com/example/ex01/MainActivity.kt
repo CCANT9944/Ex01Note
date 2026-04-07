@@ -24,6 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
@@ -63,6 +66,11 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.navigation.navArgument
 import com.example.ex01.ui.theme.Ex01Theme
 import com.example.ex01.ui.theme.ThemeMode
@@ -98,7 +106,14 @@ class MainActivity : ComponentActivity() {
                     navController.navigate("edit/$noteId") { launchSingleTop = true }
                 }
 
-                NavHost(navController = navController, startDestination = "list") {
+                NavHost(
+                    navController = navController,
+                    startDestination = "list",
+                    enterTransition = { slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it }) },
+                    exitTransition = { slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { -it }) },
+                    popEnterTransition = { slideInHorizontally(animationSpec = tween(400), initialOffsetX = { -it }) },
+                    popExitTransition = { slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { it }) }
+                ) {
                     composable("list") {
                         MainScreen(
                             viewModel = viewModel,
@@ -201,11 +216,12 @@ fun MainScreen(
                 DropdownMenu(
                     expanded = showCreateChooser,
                     onDismissRequest = { showCreateChooser = false },
-
-                    modifier = Modifier.widthIn(min = 96.dp)
+                    modifier = Modifier.widthIn(min = 160.dp),
+                    offset = androidx.compose.ui.unit.DpOffset(x = (-16).dp, y = (-8).dp)
                 ) {
                     DropdownMenuItem(
                         text = { Text("Note") },
+                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
                         onClick = {
                             showCreateChooser = false
                             showNoteDialog = true
@@ -213,13 +229,16 @@ fun MainScreen(
                     )
                     DropdownMenuItem(
                         text = { Text("List") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = null) },
                         onClick = {
                             showCreateChooser = false
                             showListDialog = true
                         }
                     )
+                    Divider(modifier = Modifier.padding(horizontal = 8.dp))
                     DropdownMenuItem(
                         text = { Text("Folder") },
+                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
                         onClick = {
                             showCreateChooser = false
                             showFolderDialog = true
@@ -659,20 +678,34 @@ fun FolderDetailScreen(
                 DropdownMenu(
                     expanded = showCreateChooser,
                     onDismissRequest = { showCreateChooser = false },
-                    modifier = Modifier.widthIn(min = 96.dp)
+                    modifier = Modifier.widthIn(min = 160.dp),
+                    offset = androidx.compose.ui.unit.DpOffset(x = (-16).dp, y = (-8).dp)
                 ) {
-                    DropdownMenuItem(text = { Text("Note") }, onClick = {
-                        showCreateChooser = false
-                        showNoteDialog = true
-                    })
-                    DropdownMenuItem(text = { Text("List") }, onClick = {
-                        showCreateChooser = false
-                        showListDialog = true
-                    })
-                    DropdownMenuItem(text = { Text("Folder") }, onClick = {
-                        showCreateChooser = false
-                        showFolderDialog = true
-                    })
+                    DropdownMenuItem(
+                        text = { Text("Note") },
+                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
+                        onClick = {
+                            showCreateChooser = false
+                            showNoteDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("List") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = null) },
+                        onClick = {
+                            showCreateChooser = false
+                            showListDialog = true
+                        }
+                    )
+                    Divider(modifier = Modifier.padding(horizontal = 8.dp))
+                    DropdownMenuItem(
+                        text = { Text("Folder") },
+                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                        onClick = {
+                            showCreateChooser = false
+                            showFolderDialog = true
+                        }
+                    )
                 }
             }
         }
@@ -1193,8 +1226,8 @@ private fun NotePreviewDialog(
     onDismissRequest: () -> Unit,
 ) {
     val items by viewModel.getItems(note.id).collectAsStateWithLifecycle(initialValue = emptyList())
-    val previewItems = remember(items) { items.sortedByDescending { it.id } }
-    val bodyStyleNote = note.kind == NoteKinds.FREE_TEXT && note.listStyle == NoteListStyles.CHECKLIST
+    val previewItems = remember(items) { items.sortedBy { it.id } }
+    val showBodyPreview = note.kind == NoteKinds.FREE_TEXT
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -1233,7 +1266,7 @@ private fun NotePreviewDialog(
                     }
                 }
 
-                if (bodyStyleNote) {
+                if (showBodyPreview) {
                     Text(
                         text = "Note preview",
                         style = MaterialTheme.typography.labelLarge,

@@ -1,5 +1,6 @@
 package com.example.ex01
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -308,14 +309,13 @@ fun FolderCard(
                     onClick = onMenuClick,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(y = 8.dp)
                         .size(28.dp)
                 ) {
                     Icon(
                         Icons.Default.MoreHoriz,
                         contentDescription = "Folder actions",
                         modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -345,14 +345,12 @@ fun NoteCard(
     val targetHeight = if (isCollapsed) 64.dp else 190.dp
     val animatedHeight by animateDpAsState(targetValue = targetHeight)
 
-    Surface(
+    Card(
         modifier = modifier
-            .width(170.dp)
-            .height(animatedHeight)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .animateContentSize(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
             if (isCollapsed) {
@@ -460,7 +458,7 @@ fun NoteCard(
                             )
                         }
                     } else {
-                        val previewItems = items.sortedByDescending { it.id }
+                        val previewItems = items.sortedBy { it.id }
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(1.dp)
@@ -506,8 +504,6 @@ fun NoteCard(
                 onMenuMoveToFolder = onMenuMoveToFolder,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 2.dp)
-                    .offset(y = 8.dp)
             )
         }
     }
@@ -536,7 +532,7 @@ private fun CardMenuButton(
                 Icons.Default.MoreVert,
                 contentDescription = "Menu",
                 modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
         DropdownMenu(
@@ -633,5 +629,7 @@ fun NoteItemRow(
         }
     }
 }
+
+
 
 

@@ -91,3 +91,9 @@ or:
 - The app is still evolving, and the UI is being refined over time.
 - The rich-text editor focuses on the current toolbar actions, undo flow, and note-editing experience.
 
+### Recent Updates
+
+- **Smooth Screen Transitions:** Navigating between the Home screen, Folders, and Notes now uses seamless slide-in and slide-out animations.
+- **Card Expansion Animations:** Expanding and collapsing Folder and Note cards on the Home screen now animates smoothly rather than instantly snapping.
+- **Improved UI in Dark Mode:** Fixed the visibility of the "3 dots" (More options) menu icon on Folders and Notes so it no longer blends into the dark background.
+- **Enhanced "+" Create Menu:** The floating action button's dropdown menu has been upgraded to a wider, better-aligned design featuring Material icons for Notes, Lists, and Folders, complete with a clean separator between item types.

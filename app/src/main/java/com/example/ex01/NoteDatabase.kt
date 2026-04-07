@@ -122,7 +122,7 @@ interface NoteDao {
     @Delete
     suspend fun deleteNote(note: Note)
 
-    @Query("SELECT * FROM note_items WHERE noteId = :noteId")
+    @Query("SELECT * FROM note_items WHERE noteId = :noteId ORDER BY id ASC")
     fun getItemsForNote(noteId: Int): Flow<List<NoteItem>>
 
     @Insert
