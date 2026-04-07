@@ -93,6 +93,9 @@ or:
 
 ### Recent Updates
 
+- **Trash Bin added:** A safety net has been added for deleted Notes and Folders. You can now restore or permanently remove items via the new Trash Bin accessible from the App Settings menu.
+- **Native Settings Sidebar:** Upgraded the App Settings sidebar menu to use standard Material 3 NavigationDrawerItems for a more native look and feel.
+- **Fixed Page Tab Bleeding Bug:** Resolved an issue where text from an old page would bleed onto newly created pages due to internal component recycling. Text inputs now stay firmly contained within their own page tabs.
 - **Custom Named Note Pages:** Free-text note pages can now be custom named! Long-press on any page tab to rename or delete the page.
 - **Improved Text Selection Area:** Fixed an issue where swiping to highlight text inside a note incorrectly triggered horizontal page navigation.
 - **Robust Persistence & Saving:** Fixed a bug to ensure page renames, new pages, and text inputs securely save when the app is minimized or closed.
