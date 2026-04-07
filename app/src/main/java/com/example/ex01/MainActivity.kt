@@ -121,7 +121,14 @@ class MainActivity : ComponentActivity() {
                             folderColorRepo = folderColorRepo,
                             themeSettingsRepository = themeSettingsRepository,
                             onNoteClick = openNote,
-                            onFolderClick = { folderId -> navController.navigate("folder/$folderId") }
+                            onFolderClick = { folderId -> navController.navigate("folder/$folderId") },
+                            onOpenTrash = { navController.navigate("trash") }
+                        )
+                    }
+                    composable("trash") {
+                        TrashScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     composable("edit/{noteId}", arguments = listOf(navArgument("noteId") { type = NavType.IntType })) { backStackEntry ->
@@ -164,7 +171,8 @@ fun MainScreen(
     folderColorRepo: FolderColorRepository,
     themeSettingsRepository: ThemeSettingsRepository,
     onNoteClick: (Int) -> Unit,
-    onFolderClick: (Int) -> Unit
+    onFolderClick: (Int) -> Unit,
+    onOpenTrash: () -> Unit
 ) {
     val context = LocalContext.current
     val currentThemeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
@@ -599,7 +607,11 @@ fun MainScreen(
             AppSettingsDialog(
                 currentThemeMode = currentThemeMode,
                 onThemeModeSelected = themeSettingsRepository::setThemeMode,
-                onDismissRequest = { showSettingsDialog = false }
+                onDismissRequest = { showSettingsDialog = false },
+                onOpenTrash = {
+                    showSettingsDialog = false
+                    onOpenTrash()
+                }
             )
         }
     }

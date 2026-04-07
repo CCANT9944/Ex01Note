@@ -1,18 +1,14 @@
 package com.example.ex01
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -74,16 +70,11 @@ internal fun PageBodyEditor(
     val safePageIndex = selectedPageIndex.coerceIn(0, pageBodies.lastIndex)
     val pagerState = rememberPagerState(initialPage = safePageIndex, pageCount = { pageBodies.size })
     var editingPageIndex by remember { mutableStateOf<Int?>(null) }
+    val currentSerializedBody by androidx.compose.runtime.rememberUpdatedState(serializedPagesBody)
 
     LaunchedEffect(pageBodies.size) {
         if (selectedPageIndex > pageBodies.lastIndex) {
             onSelectedPageIndexChange(pageBodies.lastIndex)
-        }
-    }
-
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage != selectedPageIndex) {
-            onSelectedPageIndexChange(pagerState.currentPage)
         }
     }
 
@@ -124,7 +115,7 @@ internal fun PageBodyEditor(
 
     fun commitActivePage() {
         onSerializedPagesBodyChange(
-            replaceNotePage(serializedPagesBody, safePageIndex, activeController.value.text)
+            replaceNotePage(currentSerializedBody, safePageIndex, activeController.value.text)
         )
     }
 
@@ -203,7 +194,7 @@ internal fun PageBodyEditor(
 
                 item {
                     OutlinedButton(onClick = {
-                        onSerializedPagesBodyChange(appendNotePage(serializedPagesBody))
+                        onSerializedPagesBodyChange(appendNotePage(currentSerializedBody))
                         onSelectedPageIndexChange(pageBodies.size)
                     }) {
                         Text("+ Add page")
@@ -219,11 +210,11 @@ internal fun PageBodyEditor(
                     currentName = pageItems[indexToEdit].name,
                     canDelete = pageItems.size > 1,
                     onRename = { newName ->
-                        onSerializedPagesBodyChange(renameNotePage(serializedPagesBody, indexToEdit, newName))
+                        onSerializedPagesBodyChange(renameNotePage(currentSerializedBody, indexToEdit, newName))
                         editingPageIndex = null
                     },
                     onDelete = {
-                        onSerializedPagesBodyChange(deleteNotePage(serializedPagesBody, indexToEdit))
+                        onSerializedPagesBodyChange(deleteNotePage(currentSerializedBody, indexToEdit))
                         if (selectedPageIndex > 0 && selectedPageIndex >= indexToEdit) {
                             onSelectedPageIndexChange(selectedPageIndex - 1)
                         }
@@ -236,6 +227,7 @@ internal fun PageBodyEditor(
             HorizontalPager(
                 state = pagerState,
                 userScrollEnabled = false,
+                key = { it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -262,7 +254,7 @@ internal fun PageBodyEditor(
                     value = pageController.value,
                     onValueChange = { next ->
                         pageController.updateValue(next)
-                        onSerializedPagesBodyChange(replaceNotePage(serializedPagesBody, pageIndex, next.text))
+                        onSerializedPagesBodyChange(replaceNotePage(currentSerializedBody, pageIndex, next.text))
                     },
                     modifier = Modifier.fillMaxSize()
                 )

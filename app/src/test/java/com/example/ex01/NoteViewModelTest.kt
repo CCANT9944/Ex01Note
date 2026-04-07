@@ -13,10 +13,13 @@ class FakeNoteDao : NoteDao {
     private val notesList = mutableListOf<Note>()
     private val itemsList = mutableListOf<NoteItem>()
 
-    override fun getAllFolders() = kotlinx.coroutines.flow.flow { emit(foldersList.toList()) }
-    override fun getRootFolders() = kotlinx.coroutines.flow.flow { emit(foldersList.filter { it.parentFolderId == null }) }
-    override fun getFoldersByParent(parentFolderId: Int) = kotlinx.coroutines.flow.flow { emit(foldersList.filter { it.parentFolderId == parentFolderId }) }
-    override suspend fun getFoldersByParentOnce(parentFolderId: Int) = foldersList.filter { it.parentFolderId == parentFolderId }
+    override fun getDeletedFolders() = kotlinx.coroutines.flow.flow { emit(foldersList.filter { it.isDeleted }) }
+    override fun getDeletedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.isDeleted }) }
+
+    override fun getAllFolders() = kotlinx.coroutines.flow.flow { emit(foldersList.filter { !it.isDeleted }) }
+    override fun getRootFolders() = kotlinx.coroutines.flow.flow { emit(foldersList.filter { it.parentFolderId == null && !it.isDeleted }) }
+    override fun getFoldersByParent(parentFolderId: Int) = kotlinx.coroutines.flow.flow { emit(foldersList.filter { it.parentFolderId == parentFolderId && !it.isDeleted }) }
+    override suspend fun getFoldersByParentOnce(parentFolderId: Int) = foldersList.filter { it.parentFolderId == parentFolderId && !it.isDeleted }
     override suspend fun insertFolder(folder: Folder) { foldersList.add(folder.copy(id = (foldersList.size + 1))) }
     override suspend fun updateFolder(folder: Folder) {
         val idx = foldersList.indexOfFirst { it.id == folder.id }
@@ -24,9 +27,9 @@ class FakeNoteDao : NoteDao {
     }
     override suspend fun deleteFolder(folder: Folder) { foldersList.removeAll { it.id == folder.id } }
 
-    override fun getAllNotes() = kotlinx.coroutines.flow.flow { emit(notesList.toList()) }
-    override fun getNotesByFolder(folderId: Int) = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == folderId }) }
-    override fun getUnfolderedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == null }) }
+    override fun getAllNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { !it.isDeleted }) }
+    override fun getNotesByFolder(folderId: Int) = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == folderId && !it.isDeleted }) }
+    override fun getUnfolderedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == null && !it.isDeleted }) }
     override fun getNoteById(id: Int) = kotlinx.coroutines.flow.flow { emit(notesList.firstOrNull { it.id == id }) }
     override suspend fun insertNote(note: Note): Long {
         val newId = notesList.size + 1
