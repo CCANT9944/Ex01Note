@@ -93,6 +93,10 @@ or:
 
 ### Recent Updates
 
+- **Custom Named Note Pages:** Free-text note pages can now be custom named! Long-press on any page tab to rename or delete the page.
+- **Improved Text Selection Area:** Fixed an issue where swiping to highlight text inside a note incorrectly triggered horizontal page navigation.
+- **Robust Persistence & Saving:** Fixed a bug to ensure page renames, new pages, and text inputs securely save when the app is minimized or closed.
+- **Under-the-Hood Editor Refactoring:** Drastically modularized the internal codebase, splitting the massive `NoteEditScreen` out into separate, lightweight `ChecklistEditor` and `PageBodyEditor` components for better long-term app maintenance.
 - **Smooth Screen Transitions:** Navigating between the Home screen, Folders, and Notes now uses seamless slide-in and slide-out animations.
 - **Card Expansion Animations:** Expanding and collapsing Folder and Note cards on the Home screen now animates smoothly rather than instantly snapping.
 - **Improved UI in Dark Mode:** Fixed the visibility of the "3 dots" (More options) menu icon on Folders and Notes so it no longer blends into the dark background.
