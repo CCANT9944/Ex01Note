@@ -32,7 +32,8 @@ object NoteListStyles {
 data class Folder(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val parentFolderId: Int? = null
+    val parentFolderId: Int? = null,
+    val isDeleted: Boolean = false
 )
 
 @Entity(
@@ -53,7 +54,8 @@ data class Note(
     val folderId: Int? = null,
     val kind: String = NoteKinds.CHECKLIST,
     val listStyle: String = NoteListStyles.CHECKLIST,
-    val body: String = ""
+    val body: String = "",
+    val isDeleted: Boolean = false
 )
 
 @Entity(
@@ -77,17 +79,20 @@ data class NoteItem(
 
 @Dao
 interface NoteDao {
-    @Query("SELECT * FROM folders")
+    @Query("SELECT * FROM folders WHERE isDeleted = 0")
     fun getAllFolders(): Flow<List<Folder>>
 
-    @Query("SELECT * FROM folders WHERE parentFolderId IS NULL")
+    @Query("SELECT * FROM folders WHERE parentFolderId IS NULL AND isDeleted = 0")
     fun getRootFolders(): Flow<List<Folder>>
 
-    @Query("SELECT * FROM folders WHERE parentFolderId = :parentFolderId")
+    @Query("SELECT * FROM folders WHERE parentFolderId = :parentFolderId AND isDeleted = 0")
     fun getFoldersByParent(parentFolderId: Int): Flow<List<Folder>>
 
-    @Query("SELECT * FROM folders WHERE parentFolderId = :parentFolderId")
+    @Query("SELECT * FROM folders WHERE parentFolderId = :parentFolderId AND isDeleted = 0")
     suspend fun getFoldersByParentOnce(parentFolderId: Int): List<Folder>
+
+    @Query("SELECT * FROM folders WHERE isDeleted = 1")
+    fun getDeletedFolders(): Flow<List<Folder>>
 
     @Insert
     suspend fun insertFolder(folder: Folder)
@@ -98,14 +103,17 @@ interface NoteDao {
     @Delete
     suspend fun deleteFolder(folder: Folder)
 
-    @Query("SELECT * FROM notes")
+    @Query("SELECT * FROM notes WHERE isDeleted = 0")
     fun getAllNotes(): Flow<List<Note>>
 
-    @Query("SELECT * FROM notes WHERE folderId = :folderId")
+    @Query("SELECT * FROM notes WHERE folderId = :folderId AND isDeleted = 0")
     fun getNotesByFolder(folderId: Int): Flow<List<Note>>
 
-    @Query("SELECT * FROM notes WHERE folderId IS NULL")
+    @Query("SELECT * FROM notes WHERE folderId IS NULL AND isDeleted = 0")
     fun getUnfolderedNotes(): Flow<List<Note>>
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 1")
+    fun getDeletedNotes(): Flow<List<Note>>
 
     @Query("SELECT * FROM notes WHERE id = :id")
     fun getNoteById(id: Int): Flow<Note?>
@@ -135,7 +143,7 @@ interface NoteDao {
     suspend fun deleteItem(item: NoteItem)
 }
 
-@Database(entities = [Folder::class, Note::class, NoteItem::class], version = 7, exportSchema = false)
+@Database(entities = [Folder::class, Note::class, NoteItem::class], version = 8, exportSchema = false)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -166,6 +174,13 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `folders` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: NoteDatabase? = null
 
@@ -179,6 +194,7 @@ abstract class NoteDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                 .addMigrations(MIGRATION_5_6)
                 .addMigrations(MIGRATION_6_7)
+                .addMigrations(MIGRATION_7_8)
                 .build()
                 INSTANCE = instance
                 instance

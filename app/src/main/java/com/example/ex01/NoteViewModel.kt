@@ -11,6 +11,8 @@ class NoteViewModel(private val dao: NoteDao) : ViewModel() {
     val folders = dao.getAllFolders()
     val rootFolders = dao.getRootFolders()
     val unassignedNotes = dao.getUnfolderedNotes()
+    val deletedFolders = dao.getDeletedFolders()
+    val deletedNotes = dao.getDeletedNotes()
 
     fun getNotesByFolder(folderId: Int) = dao.getNotesByFolder(folderId)
     fun getFoldersByParent(folderId: Int) = dao.getFoldersByParent(folderId)
@@ -42,6 +44,30 @@ class NoteViewModel(private val dao: NoteDao) : ViewModel() {
     }
 
     fun deleteFolder(folder: Folder) {
+        viewModelScope.launch {
+            dao.updateFolder(folder.copy(isDeleted = true))
+        }
+    }
+
+    fun restoreFolder(folder: Folder) {
+        viewModelScope.launch {
+            dao.updateFolder(folder.copy(isDeleted = false))
+        }
+    }
+
+    fun deleteNote(note: Note) {
+        viewModelScope.launch {
+            dao.updateNote(note.copy(isDeleted = true))
+        }
+    }
+
+    fun restoreNote(note: Note) {
+        viewModelScope.launch {
+            dao.updateNote(note.copy(isDeleted = false))
+        }
+    }
+
+    fun permanentlyDeleteFolder(folder: Folder) {
         viewModelScope.launch {
             deleteFolderRecursively(folder.id)
             dao.deleteNotesByFolder(folder.id)
@@ -96,7 +122,7 @@ class NoteViewModel(private val dao: NoteDao) : ViewModel() {
         }
     }
 
-    fun deleteNote(note: Note) {
+    fun permanentlyDeleteNote(note: Note) {
         viewModelScope.launch { dao.deleteNote(note) }
     }
 
@@ -125,4 +151,3 @@ class NoteViewModelFactory(private val dao: NoteDao) : ViewModelProvider.Factory
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
-
