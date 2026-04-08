@@ -1,7 +1,8 @@
 package com.example.ex01
 
 import kotlinx.coroutines.flow.first
-// ...existing code...
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -31,6 +32,16 @@ class FakeNoteDao : NoteDao {
     override fun getNotesByFolder(folderId: Int) = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == folderId && !it.isDeleted }) }
     override fun getUnfolderedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == null && !it.isDeleted }) }
     override fun getNoteById(id: Int) = kotlinx.coroutines.flow.flow { emit(notesList.firstOrNull { it.id == id }) }
+
+    override suspend fun getNoteByIdOnce(id: Int): Note? =
+        notesList.find { it.id == id }
+
+    override suspend fun getAllChecklistsOnce(): List<Note> =
+        notesList.filter { it.kind == NoteKinds.CHECKLIST && !it.isDeleted }
+
+    override suspend fun getItemsForNoteOnce(noteId: Int): List<NoteItem> =
+        itemsList.filter { it.noteId == noteId }
+
     override suspend fun insertNote(note: Note): Long {
         val newId = notesList.size + 1
         notesList.add(note.copy(id = newId))
@@ -105,4 +116,3 @@ class NoteViewModelTest {
         assertEquals("Task 1", notesInFolder[0].title)
     }
 }
-

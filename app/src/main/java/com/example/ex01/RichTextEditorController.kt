@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 
 internal class RichTextEditorController(
@@ -28,13 +29,48 @@ internal class RichTextEditorController(
 
     fun updateValue(nextValue: TextFieldValue) {
         if (nextValue == value) return
-        if (nextValue.text != value.text) {
+
+        // Intercept single-backspace or forward-delete over an invisible formatting marker.
+        // Instead of deleting the marker, just move the cursor inside the span appropriately.
+        var interceptedNext = nextValue
+        if (value.text.length - nextValue.text.length == 1) {
+            var deletedOffset = -1
+            for (i in 0 until nextValue.text.length) {
+                if (value.text[i] != nextValue.text[i]) {
+                    deletedOffset = i
+                    break
+                }
+            }
+            if (deletedOffset == -1) deletedOffset = nextValue.text.length
+
+            if (deletedOffset >= 0 && deletedOffset < value.text.length) {
+                val deletedChar = value.text[deletedOffset]
+                if (isFormattingMarker(deletedChar)) {
+                    val expectedRemaining = value.text.substring(0, deletedOffset) +
+                                            value.text.substring(deletedOffset + 1)
+                    if (nextValue.text == expectedRemaining) {
+                        // The user deleted EXACTLY the invisible marker.
+                        // We restore the marker and just move the cursor to where it would be.
+                        // If it was a backspace, the cursor in nextValue is probably deletedOffset.
+                        interceptedNext = TextFieldValue(
+                            text = value.text,
+                            selection = TextRange(deletedOffset),
+                            composition = nextValue.composition
+                        )
+                    }
+                }
+            }
+        }
+
+        val sanitized = sanitizeRichTextTyping(interceptedNext)
+        if (sanitized == value) return
+        if (sanitized.text != value.text) {
             recordTypingUndoBoundary()
             lastTextEditAtMillis = nowMillis()
         } else {
             lastTextEditAtMillis = null
         }
-        value = nextValue
+        value = sanitized
         canUndo = undoStack.isNotEmpty()
     }
 
@@ -105,6 +141,14 @@ internal class RichTextEditorController(
             undoStack.removeFirst()
         }
     }
+
+    private fun isFormattingMarker(char: Char): Boolean {
+        return char == BOLD_OPEN_MARKER || char == BOLD_CLOSE_MARKER ||
+               char == ITALIC_OPEN_MARKER || char == ITALIC_CLOSE_MARKER ||
+               char == UNDERLINE_OPEN_MARKER || char == UNDERLINE_CLOSE_MARKER ||
+               char == STRIKETHROUGH_OPEN_MARKER || char == STRIKETHROUGH_CLOSE_MARKER ||
+               char == BULLET_OPEN_MARKER || char == BULLET_CLOSE_MARKER
+    }
 }
 
 @Composable
@@ -117,4 +161,3 @@ internal fun rememberRichTextEditorController(initialValue: TextFieldValue): Ric
 
     return controller
 }
-

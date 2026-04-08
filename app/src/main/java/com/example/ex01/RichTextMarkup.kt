@@ -286,8 +286,68 @@ fun normalizeRichTextMarkup(value: TextFieldValue): TextFieldValue {
     )
 }
 
+fun normalizeBulletNewlines(value: TextFieldValue): TextFieldValue {
+    val raw = value.text
+    if (!raw.contains('\n')) return value
+
+    var needsRefactoring = false
+    var currentDepth = 0
+    for(i in raw.indices) {
+        val char = raw[i]
+        if (char == BULLET_OPEN_MARKER) currentDepth++
+        else if (char == BULLET_CLOSE_MARKER) {
+            if (currentDepth > 0) currentDepth--
+        } else if (char == '\n' && currentDepth > 0) {
+            needsRefactoring = true
+            break
+        }
+    }
+    if (!needsRefactoring) return value
+
+    val rebuilt = StringBuilder(raw.length + 10)
+    val originalToCleaned = IntArray(raw.length + 1)
+    var cleanedIndex = 0
+    currentDepth = 0
+
+    for (i in raw.indices) {
+        val char = raw[i]
+        
+        if (char == '\n' && currentDepth > 0) {
+            for (d in 0 until currentDepth) {
+                rebuilt.append(BULLET_CLOSE_MARKER)
+                cleanedIndex++
+            }
+            originalToCleaned[i] = cleanedIndex
+            rebuilt.append('\n')
+            cleanedIndex++
+            for (d in 0 until currentDepth) {
+                rebuilt.append(BULLET_OPEN_MARKER)
+                cleanedIndex++
+            }
+        } else {
+            originalToCleaned[i] = cleanedIndex
+            if (char == BULLET_OPEN_MARKER) currentDepth++
+            else if (char == BULLET_CLOSE_MARKER) {
+                if (currentDepth > 0) currentDepth--
+            }
+            rebuilt.append(char)
+            cleanedIndex++
+        }
+    }
+    originalToCleaned[raw.length] = cleanedIndex
+
+    val start = value.selection.start.coerceIn(0, raw.length)
+    val end = value.selection.end.coerceIn(0, raw.length)
+    
+    return rebuildValue(
+        original = value,
+        text = rebuilt.toString(),
+        selection = TextRange(originalToCleaned[start], originalToCleaned[end])
+    )
+}
+
 fun sanitizeRichTextTyping(value: TextFieldValue): TextFieldValue {
-    return collapseEmptyFormattingSpans(normalizeRichTextMarkup(value))
+    return collapseEmptyFormattingSpans(normalizeBulletNewlines(normalizeRichTextMarkup(value)))
 }
 
 fun toggleBoldFormatting(value: TextFieldValue): TextFieldValue = toggleFormatting(value, BOLD_MARKERS)
@@ -311,12 +371,25 @@ fun toggleBulletFormatting(value: TextFieldValue): TextFieldValue {
     val firstSelectedLineIndex = findLineIndexForOffset(lineRanges, start)
     val lastSelectedLineIndex = findLineIndexForOffset(lineRanges, selectionEndOffset)
     val selectedLines = lineRanges.subList(firstSelectedLineIndex, lastSelectedLineIndex + 1)
-    val allSelectedLinesBulleted = selectedLines.isNotEmpty() && selectedLines.all { line ->
-        isBulletedLine(raw, line)
+    
+    val bulletedLinesBefore = BooleanArray(lineRanges.size) { index ->
+        isBulletedLine(raw, lineRanges[index])
+    }
+    
+    val allSelectedLinesBulletedBefore = selectedLines.isNotEmpty() && (firstSelectedLineIndex..lastSelectedLineIndex).all {
+        bulletedLinesBefore[it]
+    }
+
+    val bulletedLinesAfter = BooleanArray(lineRanges.size) { index ->
+        if (index in firstSelectedLineIndex..lastSelectedLineIndex) {
+            !allSelectedLinesBulletedBefore
+        } else {
+            bulletedLinesBefore[index]
+        }
     }
 
     val originalToCleaned = IntArray(raw.length + 1)
-    val rebuilt = StringBuilder(raw.length + selectedLines.size * 2)
+    val rebuilt = StringBuilder(raw.length + lineRanges.size * 2)
     var cleanedIndex = 0
 
     fun appendOriginal(index: Int) {
@@ -332,60 +405,34 @@ fun toggleBulletFormatting(value: TextFieldValue): TextFieldValue {
 
     for (lineIndex in lineRanges.indices) {
         val line = lineRanges[lineIndex]
-        val isSelectedLine = lineIndex in firstSelectedLineIndex..lastSelectedLineIndex
-        val lineIsBulleted = isBulletedLine(raw, line)
+        val shouldBeBulleted = bulletedLinesAfter[lineIndex]
 
-        when {
-            !isSelectedLine -> {
-                for (index in line.start until line.endExclusive) {
-                    appendOriginal(index)
-                }
-                originalToCleaned[line.endExclusive] = cleanedIndex
-            }
+        originalToCleaned[line.start] = cleanedIndex
+        
+        if (shouldBeBulleted) {
+            appendInserted(BULLET_OPEN_MARKER)
+        }
 
-            allSelectedLinesBulleted && lineIsBulleted -> {
-                originalToCleaned[line.start] = cleanedIndex
-                for (index in line.start until line.endExclusive) {
-                    if (raw[index] != BULLET_OPEN_MARKER && raw[index] != BULLET_CLOSE_MARKER) {
-                        appendOriginal(index)
-                    } else {
-                        originalToCleaned[index] = cleanedIndex
-                    }
-                }
-                originalToCleaned[line.endExclusive] = cleanedIndex
-            }
-
-            allSelectedLinesBulleted -> {
-                for (index in line.start until line.endExclusive) {
-                    appendOriginal(index)
-                }
-                originalToCleaned[line.endExclusive] = cleanedIndex
-            }
-
-            lineIsBulleted -> {
-                for (index in line.start until line.endExclusive) {
-                    appendOriginal(index)
-                }
-                originalToCleaned[line.endExclusive] = cleanedIndex
-            }
-
-            else -> {
-                appendInserted(BULLET_OPEN_MARKER)
-                for (index in line.start until line.endExclusive) {
-                    appendOriginal(index)
-                }
-                originalToCleaned[line.endExclusive] = cleanedIndex
-                appendInserted(BULLET_CLOSE_MARKER)
+        for (index in line.start until line.endExclusive) {
+            // Strip any existing bullet markers
+            if (raw[index] != BULLET_OPEN_MARKER && raw[index] != BULLET_CLOSE_MARKER) {
+                appendOriginal(index)
+            } else {
+                originalToCleaned[index] = cleanedIndex
             }
         }
 
+        originalToCleaned[line.endExclusive] = cleanedIndex
+
+        if (shouldBeBulleted) {
+            appendInserted(BULLET_CLOSE_MARKER)
+        }
 
         if (line.newlineIndex != null) {
             rebuilt.append('\n')
             cleanedIndex++
         }
     }
-
 
     return rebuildValue(
         original = normalized,
@@ -516,13 +563,14 @@ private fun findLineIndexForOffset(lineRanges: List<RawLineRange>, offset: Int):
 }
 
 private fun isBulletedLine(raw: String, line: RawLineRange): Boolean {
+    if (formattingDepthAtOffset(raw, line.start).bulletDepth > 0) return true
     for (i in line.start until line.endExclusive) {
         if (raw[i] == BULLET_OPEN_MARKER) return true
     }
     return false
 }
 
-private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPair): TextFieldValue {
+internal fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPair): TextFieldValue {
     val normalized = normalizeRichTextMarkup(value)
     val raw = normalized.text
     val start = minOf(normalized.selection.start, normalized.selection.end).coerceIn(0, raw.length)
@@ -548,6 +596,8 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
 
             if (enclosingMarkers != null && start > enclosingMarkers.openIndex && start <= enclosingMarkers.closeIndex) {
                 val contentStart = enclosingMarkers.openIndex + 1
+
+
                 val shouldSplitAtWhitespaceBoundary = start > contentStart && raw[start - 1].isWhitespace()
 
                 if (shouldSplitAtWhitespaceBoundary) {
@@ -572,6 +622,10 @@ private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPai
                     }
 
                     rebuildValue(normalized, rebuilt, TextRange(rebuilt.length - suffix.length))
+                } else if (start == enclosingMarkers.closeIndex) {
+                    rebuildValue(normalized, raw, TextRange(start + 1))
+                } else if (start == contentStart) {
+                    rebuildValue(normalized, raw, TextRange(start - 1))
                 } else {
                     val originalToCleaned = IntArray(raw.length + 1)
                     val cleanedText = removeFormattingMarkers(
@@ -1515,4 +1569,3 @@ fun parseMarkupColor(raw: String): Color? {
     if (raw.isBlank()) return null
     return runCatching { Color(raw.toColorInt()) }.getOrNull()
 }
-

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
@@ -260,7 +261,7 @@ internal fun PageBodyEditor(
                     value = pageController.value,
                     onValueChange = { next ->
                         pageController.updateValue(next)
-                        onSerializedPagesBodyChange(replaceNotePage(currentSerializedBody, pageIndex, next.text))
+                        onSerializedPagesBodyChange(replaceNotePage(currentSerializedBody, pageIndex, pageController.value.text))
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -350,7 +351,7 @@ private fun RichTextBodyEditor(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 16.dp)
-                .defaultMinSize(minHeight = 500.dp),
+                .heightIn(min = with(density) { (viewportHeightPx.toDp() - 32.dp).coerceAtLeast(0.dp) }),
             shadowElevation = 8.dp,
             shape = RoundedCornerShape(4.dp),
             color = MaterialTheme.colorScheme.surface,

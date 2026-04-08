@@ -263,11 +263,11 @@ class RichTextMarkupTest {
         val bolded = toggleBoldFormatting(TextFieldValue("Hello world", selection = TextRange(6, 11)))
 
         val unbolded = toggleBoldFormatting(
-            TextFieldValue(bolded.text, selection = TextRange(12))
+            TextFieldValue(bolded.text, selection = TextRange(13)) // bolded string has 2 markers now, so end is 13
         )
 
-        assertEquals("Hello world", unbolded.text)
-        assertEquals(TextRange(11), unbolded.selection)
+        assertEquals("Hello \uE000world\uE001\uE000\uE001", unbolded.text)
+        assertEquals(TextRange(14), unbolded.selection) 
     }
 
     @Test
@@ -590,11 +590,11 @@ class RichTextMarkupTest {
         val italicized = toggleItalicFormatting(TextFieldValue("Hello world", selection = TextRange(6, 11)))
 
         val unitalicized = toggleItalicFormatting(
-            TextFieldValue(italicized.text, selection = TextRange(12))
+            TextFieldValue(italicized.text, selection = TextRange(13))
         )
 
-        assertEquals("Hello world", unitalicized.text)
-        assertEquals(TextRange(11), unitalicized.selection)
+        assertEquals("Hello \uE002world\uE003\uE002\uE003", unitalicized.text)
+        assertEquals(TextRange(14), unitalicized.selection)
     }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.*
@@ -30,7 +31,8 @@ import org.json.JSONObject
 data class DrawingLine(
     val points: List<Offset>,
     val color: Color = Color.Black,
-    val strokeWidth: Float = 5f
+    val strokeWidth: Float = 5f,
+    val isEraser: Boolean = false
 ) {
     fun toPath(): Path {
         val path = Path()
@@ -58,6 +60,7 @@ fun serializeDrawing(lines: List<DrawingLine>): String {
         lineObj.put("points", pointArray)
         lineObj.put("color", line.color.value.toLong())
         lineObj.put("stroke", line.strokeWidth.toDouble()) // Float cast
+        lineObj.put("isEraser", line.isEraser)
         jsonArray.put(lineObj)
     }
     return jsonArray.toString()
@@ -78,7 +81,12 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
             }
             val color = Color(lineObj.optLong("color", Color.Black.value.toLong()).toULong())
             val stroke = lineObj.optDouble("stroke", 5.0).toFloat()
-            lines.add(DrawingLine(points, color, stroke))
+            val isEraser = lineObj.optBoolean("isEraser", false)
+            
+            // Heuristic for old lines without isEraser flag: old eraser lines either matched the default M3 surface colors or were much thicker (min eraser thickness is 20f, max pen is 12f).
+            val inferredEraser = isEraser || (!lineObj.has("isEraser") && (stroke >= 20f || color == Color(0xFFFFFBFE) || color == Color(0xFF1C1B1F) || color == Color(0xFF141218))) 
+            
+            lines.add(DrawingLine(points, color, stroke, inferredEraser))
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -95,21 +103,21 @@ fun SNoteEditor(
     var currentPath by remember { mutableStateOf<List<Offset>?>(null) }
     var currentProperties by remember { mutableStateOf(DrawingLine(emptyList())) }
     var isEraserMode by remember { mutableStateOf(false) }
-    var currentThickness by remember { mutableFloatStateOf(6f) }
+    var currentThickness by remember { mutableStateOf(6f) }
     var showThicknessMenu by remember { mutableStateOf(false) }
-    var currentEraserThickness by remember { mutableFloatStateOf(40f) }
+    var currentEraserThickness by remember { mutableStateOf(40f) }
     var showEraserThicknessMenu by remember { mutableStateOf(false) }
 
     var pageCount by remember { mutableIntStateOf(1) }
-    val pageHeightDp = 800.dp
-    val pageHeightPx = with(LocalDensity.current) { pageHeightDp.toPx() }
+    var pageHeightPx by remember { mutableFloatStateOf(0f) }
+    var pageHeightDp by remember { mutableStateOf(0.dp) }
 
-    LaunchedEffect(serializedBody) {
-        if (drawingLines.isEmpty() && serializedBody.isNotBlank() && currentPath == null) {
+    LaunchedEffect(serializedBody, pageHeightPx) {
+        if (drawingLines.isEmpty() && serializedBody.isNotBlank() && currentPath == null && pageHeightPx > 0f) {
             val lines = deserializeDrawing(serializedBody)
             drawingLines.addAll(lines)
             val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
-            if (maxY > 0 && pageHeightPx > 0) {
+            if (maxY > 0) {
                 val neededPages = kotlin.math.ceil((maxY / pageHeightPx).toDouble()).toInt()
                 if (neededPages > pageCount) pageCount = neededPages
             }
@@ -177,10 +185,6 @@ fun SNoteEditor(
                 }
             }
 
-            TextButton(onClick = { pageCount++ }) {
-                Text("Add Page")
-            }
-
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = {
                 drawingLines.clear()
@@ -202,121 +206,149 @@ fun SNoteEditor(
             shape = RoundedCornerShape(8.dp),
             color = eraserColor
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Canvas(
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val availableHeight = this.maxHeight
+                val density = LocalDensity.current
+
+                LaunchedEffect(availableHeight) {
+                    if (pageHeightDp == 0.dp) {
+                        pageHeightDp = availableHeight
+                        pageHeightPx = with(density) { availableHeight.toPx() }
+                    }
+                }
+
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(pageHeightDp * pageCount)
-                        .pointerInput(Unit) {
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull() ?: continue
-                                    val isStylus = change.type == PointerType.Stylus
-                                    val isStylusEraser = change.type == PointerType.Eraser
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (pageHeightDp > 0.dp) {
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(pageHeightDp * pageCount)
+                                .pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull() ?: continue
+                                            val isStylus = change.type == PointerType.Stylus
+                                            val isStylusEraser = change.type == PointerType.Eraser
 
-                                    if (!isStylus && !isStylusEraser) continue
+                                            if (!isStylus && !isStylusEraser) continue
 
-                                    // Consume the event so horizontal/vertical scroll doesn't intercept it while drawing
-                                    change.consume()
+                                            // Consume the event so horizontal/vertical scroll doesn't intercept it while drawing
+                                            change.consume()
 
-                                    if (change.pressed) {
-                                        if (currentPath == null) {
-                                            currentPath = listOf(change.position)
-                                            val actualEraserMode = isStylusEraser || isEraserMode
-                                            currentProperties = DrawingLine(
-                                                points = currentPath!!,
-                                                color = if (actualEraserMode) eraserColor else strokeColor,
-                                                strokeWidth = if (actualEraserMode) currentEraserThickness else currentThickness
-                                            )
-                                        } else {
-                                            currentPath = currentPath!! + change.position
-                                        }
-                                    } else {
-                                        if (currentPath != null) {
-                                            drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                            currentPath = null
-                                            commitChanges()
+                                            if (change.pressed) {
+                                                if (currentPath == null) {
+                                                    currentPath = listOf(change.position)
+                                                    val actualEraserMode = isStylusEraser || isEraserMode
+                                                    currentProperties = DrawingLine(
+                                                        points = currentPath!!,
+                                                        color = if (actualEraserMode) eraserColor else strokeColor,
+                                                        strokeWidth = if (actualEraserMode) currentEraserThickness else currentThickness,
+                                                        isEraser = actualEraserMode
+                                                     )
+                                                 } else {
+                                                     currentPath = currentPath!! + change.position
+                                                 }
+                                            } else {
+                                                if (currentPath != null) {
+                                                    drawingLines.add(currentProperties.copy(points = currentPath!!))
+                                                    currentPath = null
+                                                    commitChanges()
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                        ) {
+                            // Fill whole background first
+                            drawRect(color = eraserColor, size = size)
+
+                            // Draw thick visual dividers to make pages look distinct
+                            for (i in 1 until pageCount) {
+                                val y = i * pageHeightPx
+                                drawRect(
+                                    color = Color.Gray.copy(alpha = 0.3f),
+                                    topLeft = Offset(0f, y - 8.dp.toPx()),
+                                    size = Size(size.width, 16.dp.toPx())
+                                )
+                                // Add a slight shadow/borderline effect
+                                drawLine(
+                                    color = Color.DarkGray,
+                                    start = Offset(0f, y - 8.dp.toPx()),
+                                    end = Offset(size.width, y - 8.dp.toPx()),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                                drawLine(
+                                    color = Color.DarkGray,
+                                    start = Offset(0f, y + 8.dp.toPx()),
+                                    end = Offset(size.width, y + 8.dp.toPx()),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+
+                            // Draw page numbers at the bottom right
+                            val textSizePx = 14.dp.toPx()
+                            val textPaint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.GRAY
+                                textSize = textSizePx
+                                textAlign = android.graphics.Paint.Align.RIGHT
+                                isAntiAlias = true
+                            }
+                            for (i in 0 until pageCount) {
+                                val pageBottomY = (i + 1) * pageHeightPx
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    "Page ${i + 1}",
+                                    size.width - 16.dp.toPx(),
+                                    pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
+                                    textPaint
+                                )
+                            }
+
+                            // Draw saved lines
+                            drawingLines.forEach { line ->
+                                drawPath(
+                                    path = line.toPath(),
+                                    color = if (line.isEraser) eraserColor else strokeColor,
+                                    style = Stroke(
+                                        width = line.strokeWidth,
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    )
+                                )
+                            }
+
+                            // Draw active line
+                            currentPath?.let { pathOffsets ->
+                                val activeLine = currentProperties.copy(points = pathOffsets)
+                                drawPath(
+                                    path = activeLine.toPath(),
+                                    color = if (activeLine.isEraser) eraserColor else strokeColor,
+                                    style = Stroke(
+                                        width = activeLine.strokeWidth,
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    )
+                                )
                             }
                         }
+                    }
+                }
+
+                FilledIconButton(
+                    onClick = { pageCount++ },
+                    modifier = Modifier
+                        .align(androidx.compose.ui.Alignment.BottomStart)
+                        .padding(16.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 ) {
-                    // Fill whole background first
-                    drawRect(color = eraserColor, size = size)
-
-                    // Draw thick visual dividers to make pages look distinct
-                    for (i in 1 until pageCount) {
-                        val y = i * pageHeightPx
-                        drawRect(
-                            color = Color.Gray.copy(alpha = 0.3f),
-                            topLeft = Offset(0f, y - 8.dp.toPx()),
-                            size = Size(size.width, 16.dp.toPx())
-                        )
-                        // Add a slight shadow/borderline effect
-                        drawLine(
-                            color = Color.DarkGray,
-                            start = Offset(0f, y - 8.dp.toPx()),
-                            end = Offset(size.width, y - 8.dp.toPx()),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.DarkGray,
-                            start = Offset(0f, y + 8.dp.toPx()),
-                            end = Offset(size.width, y + 8.dp.toPx()),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
-
-                    // Draw page numbers at the bottom right
-                    val textSizePx = 14.dp.toPx()
-                    val textPaint = android.graphics.Paint().apply {
-                        color = android.graphics.Color.GRAY
-                        textSize = textSizePx
-                        textAlign = android.graphics.Paint.Align.RIGHT
-                        isAntiAlias = true
-                    }
-                    for (i in 0 until pageCount) {
-                        val pageBottomY = (i + 1) * pageHeightPx
-                        drawContext.canvas.nativeCanvas.drawText(
-                            "Page ${i + 1}",
-                            size.width - 16.dp.toPx(),
-                            pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
-                            textPaint
-                        )
-                    }
-
-                    // Draw saved lines
-                    drawingLines.forEach { line ->
-                        drawPath(
-                            path = line.toPath(),
-                            color = line.color,
-                            style = Stroke(
-                                width = line.strokeWidth,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
-                    }
-
-                    // Draw active line
-                    currentPath?.let { pathOffsets ->
-                        val activeLine = currentProperties.copy(points = pathOffsets)
-                        drawPath(
-                            path = activeLine.toPath(),
-                            color = activeLine.color,
-                            style = Stroke(
-                                width = activeLine.strokeWidth,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
-                    }
+                    Icon(Icons.Default.Add, contentDescription = "Add Page")
                 }
             }
         }

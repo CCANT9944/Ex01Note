@@ -93,9 +93,14 @@ or:
 
 ### Recent Updates
 
+- **SNote Theme & Eraser Fixes:** Resolved an issue where SNote backgrounds and strokes didn't properly adapt when switching between Light and Dark themes, and completely fixed the eraser tool's functionality to ensure smooth corrections.
+- **Rich-Text Formatting Fix:** Resolved a catastrophic bug in the Free-text editor where deleting text right after formatting toggles (like Bold or Italic) caused the formatting to bleed out and corrupt the entire document. Input intercepts now perfectly protect hidden style boundaries.
 - **Trash Bin added:** A safety net has been added for deleted Notes and Folders. You can now restore or permanently remove items via the new Trash Bin accessible from the App Settings menu.
 - **Native Settings Sidebar:** Upgraded the App Settings sidebar menu to use standard Material 3 NavigationDrawerItems for a more native look and feel.
 - **Fixed Page Tab Bleeding Bug:** Resolved an issue where text from an old page would bleed onto newly created pages due to internal component recycling. Text inputs now stay firmly contained within their own page tabs.
+- **Bullet List Formatting Stability:** Resolved an issue in the rich-text editor where pressing Enter/Return or typing at the end of a note would unexpectedly propagate bullet formatting across blank lines or throughout the entire page. Bullet toggling is now strictly constrained to the user's explicit selection and cleanly splits across newlines.
+- **SNote Floating Button Layout:** The "Add Page" (+) button inside SNotes has been explicitly moved to the left side for easier access, and individual page heights have been carefully trimmed to precisely fit the screen for natural pagination.
+
 - **Custom Named Note Pages:** Free-text note pages can now be custom named! Long-press on any page tab to rename or delete the page.
 - **Improved Text Selection Area:** Fixed an issue where swiping to highlight text inside a note incorrectly triggered horizontal page navigation.
 - **Robust Persistence & Saving:** Fixed a bug to ensure page renames, new pages, and text inputs securely save when the app is minimized or closed.
