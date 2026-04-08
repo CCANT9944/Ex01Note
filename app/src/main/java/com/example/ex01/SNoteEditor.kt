@@ -3,23 +3,27 @@ package com.example.ex01
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.verticalScroll
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -91,14 +95,24 @@ fun SNoteEditor(
     var currentPath by remember { mutableStateOf<List<Offset>?>(null) }
     var currentProperties by remember { mutableStateOf(DrawingLine(emptyList())) }
     var isEraserMode by remember { mutableStateOf(false) }
-    var currentThickness by remember { mutableStateOf(6f) }
+    var currentThickness by remember { mutableFloatStateOf(6f) }
     var showThicknessMenu by remember { mutableStateOf(false) }
-    var currentEraserThickness by remember { mutableStateOf(40f) }
+    var currentEraserThickness by remember { mutableFloatStateOf(40f) }
     var showEraserThicknessMenu by remember { mutableStateOf(false) }
+
+    var pageCount by remember { mutableIntStateOf(1) }
+    val pageHeightDp = 800.dp
+    val pageHeightPx = with(LocalDensity.current) { pageHeightDp.toPx() }
 
     LaunchedEffect(serializedBody) {
         if (drawingLines.isEmpty() && serializedBody.isNotBlank() && currentPath == null) {
-            drawingLines.addAll(deserializeDrawing(serializedBody))
+            val lines = deserializeDrawing(serializedBody)
+            drawingLines.addAll(lines)
+            val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
+            if (maxY > 0 && pageHeightPx > 0) {
+                val neededPages = kotlin.math.ceil((maxY / pageHeightPx).toDouble()).toInt()
+                if (neededPages > pageCount) pageCount = neededPages
+            }
         }
     }
 
@@ -163,6 +177,10 @@ fun SNoteEditor(
                 }
             }
 
+            TextButton(onClick = { pageCount++ }) {
+                Text("Add Page")
+            }
+
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = {
                 drawingLines.clear()
@@ -184,67 +202,121 @@ fun SNoteEditor(
             shape = RoundedCornerShape(8.dp),
             color = eraserColor
         ) {
-            Canvas(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: continue
-                                val isStylus = change.type == PointerType.Stylus
-                                val isStylusEraser = change.type == PointerType.Eraser
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(pageHeightDp * pageCount)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: continue
+                                    val isStylus = change.type == PointerType.Stylus
+                                    val isStylusEraser = change.type == PointerType.Eraser
 
-                                if (!isStylus && !isStylusEraser) continue
+                                    if (!isStylus && !isStylusEraser) continue
 
-                                if (change.pressed) {
-                                    if (currentPath == null) {
-                                        currentPath = listOf(change.position)
-                                        val actualEraserMode = isStylusEraser || isEraserMode
-                                        currentProperties = DrawingLine(
-                                            points = currentPath!!,
-                                            color = if (actualEraserMode) eraserColor else strokeColor,
-                                            strokeWidth = if (actualEraserMode) currentEraserThickness else currentThickness
-                                        )
+                                    // Consume the event so horizontal/vertical scroll doesn't intercept it while drawing
+                                    change.consume()
+
+                                    if (change.pressed) {
+                                        if (currentPath == null) {
+                                            currentPath = listOf(change.position)
+                                            val actualEraserMode = isStylusEraser || isEraserMode
+                                            currentProperties = DrawingLine(
+                                                points = currentPath!!,
+                                                color = if (actualEraserMode) eraserColor else strokeColor,
+                                                strokeWidth = if (actualEraserMode) currentEraserThickness else currentThickness
+                                            )
+                                        } else {
+                                            currentPath = currentPath!! + change.position
+                                        }
                                     } else {
-                                        currentPath = currentPath!! + change.position
-                                    }
-                                } else {
-                                    if (currentPath != null) {
-                                        drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                        currentPath = null
-                                        commitChanges()
+                                        if (currentPath != null) {
+                                            drawingLines.add(currentProperties.copy(points = currentPath!!))
+                                            currentPath = null
+                                            commitChanges()
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-            ) {
-                // Draw saved lines
-                drawingLines.forEach { line ->
-                    drawPath(
-                        path = line.toPath(),
-                        color = line.color,
-                        style = Stroke(
-                            width = line.strokeWidth,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
-                }
+                ) {
+                    // Fill whole background first
+                    drawRect(color = eraserColor, size = size)
 
-                // Draw active line
-                currentPath?.let { pathOffsets ->
-                    val activeLine = currentProperties.copy(points = pathOffsets)
-                    drawPath(
-                        path = activeLine.toPath(),
-                        color = activeLine.color,
-                        style = Stroke(
-                            width = activeLine.strokeWidth,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
+                    // Draw thick visual dividers to make pages look distinct
+                    for (i in 1 until pageCount) {
+                        val y = i * pageHeightPx
+                        drawRect(
+                            color = Color.Gray.copy(alpha = 0.3f),
+                            topLeft = Offset(0f, y - 8.dp.toPx()),
+                            size = Size(size.width, 16.dp.toPx())
                         )
-                    )
+                        // Add a slight shadow/borderline effect
+                        drawLine(
+                            color = Color.DarkGray,
+                            start = Offset(0f, y - 8.dp.toPx()),
+                            end = Offset(size.width, y - 8.dp.toPx()),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = Color.DarkGray,
+                            start = Offset(0f, y + 8.dp.toPx()),
+                            end = Offset(size.width, y + 8.dp.toPx()),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+
+                    // Draw page numbers at the bottom right
+                    val textSizePx = 14.dp.toPx()
+                    val textPaint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.GRAY
+                        textSize = textSizePx
+                        textAlign = android.graphics.Paint.Align.RIGHT
+                        isAntiAlias = true
+                    }
+                    for (i in 0 until pageCount) {
+                        val pageBottomY = (i + 1) * pageHeightPx
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "Page ${i + 1}",
+                            size.width - 16.dp.toPx(),
+                            pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
+                            textPaint
+                        )
+                    }
+
+                    // Draw saved lines
+                    drawingLines.forEach { line ->
+                        drawPath(
+                            path = line.toPath(),
+                            color = line.color,
+                            style = Stroke(
+                                width = line.strokeWidth,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
+
+                    // Draw active line
+                    currentPath?.let { pathOffsets ->
+                        val activeLine = currentProperties.copy(points = pathOffsets)
+                        drawPath(
+                            path = activeLine.toPath(),
+                            color = activeLine.color,
+                            style = Stroke(
+                                width = activeLine.strokeWidth,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
+                            )
+                        )
+                    }
                 }
             }
         }

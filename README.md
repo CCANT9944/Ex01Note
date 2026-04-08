@@ -109,3 +109,6 @@ or:
 - **Stylus S-Note Drawing Tool:** Added a brand new "S-Note" item type built specifically for S-Pen and stylus drawing. Access it from the "+" create menu or inside folders.
 - **Finger-Rejection Canvas:** The drawing surface intelligently rejects finger touches, allowing you to naturally rest your hand on the screen to draw without leaving smudges.
 - **Thickness Controls:** Both the Pen and Eraser tools have integrated dropdown menus to select Thin, Medium, or Thick stroke sizes.
+- **Multi-Page SNote Canvas:** The SNote editor now supports infinite vertical scrolling. The drawing canvas extends downward automatically as you draw, and you can manually extend it with the "Add Page" button.
+- **Realistic Page Separation:** SNote pages are visually segmented with gray page dividers and include automatically assigned a "Page X" watermark at the bottom right corner of each segment to simulate continuous traditional document editing.
+- **Hybrid Input (Scroll & Draw):** Your fingers are freely able to swipe up and down the viewport to scroll the pages, while your S-Pen will seamlessly continue to draw!
