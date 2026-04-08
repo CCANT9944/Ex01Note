@@ -49,6 +49,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
@@ -220,7 +221,12 @@ internal fun PageBodyEditor(
                         }
                         editingPageIndex = null
                     },
-                    onDismissRequest = { editingPageIndex = null }
+                    onDismissRequest = { editingPageIndex = null },
+                    canSplit = pageItems[indexToEdit].body.length > 500,
+                    onSplit = {
+                        onSerializedPagesBodyChange(splitLongNotePage(currentSerializedBody, indexToEdit, 500))
+                        editingPageIndex = null
+                    }
                 )
             }
 
@@ -340,36 +346,53 @@ private fun RichTextBodyEditor(
             .verticalScroll(scrollState)
             .imePadding()
     ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            visualTransformation = richTextVisualTransformation(),
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .bringIntoViewRequester(bringIntoViewRequester)
-                .onFocusChanged {
-                    if (it.isFocused && !isFocused) {
-                        resumeRevealTick++
+                .padding(horizontal = 8.dp, vertical = 16.dp)
+                .defaultMinSize(minHeight = 500.dp),
+            shadowElevation = 8.dp,
+            shape = RoundedCornerShape(4.dp),
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp)
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    visualTransformation = richTextVisualTransformation(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bringIntoViewRequester(bringIntoViewRequester)
+                        .onFocusChanged {
+                            if (it.isFocused && !isFocused) {
+                                resumeRevealTick++
+                            }
+                            isFocused = it.isFocused
+                        },
+                    onTextLayout = { textLayoutResult = it },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (value.text.isBlank()) {
+                                Text(
+                                    text = "Write your note",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            innerTextField()
+                        }
                     }
-                    isFocused = it.isFocused
-                },
-            onTextLayout = { textLayoutResult = it },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (value.text.isBlank()) {
-                        Text(
-                            text = "Write your note",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    innerTextField()
-                }
+                )
             }
-        )
+        }
         Spacer(
             modifier = Modifier.height(
                 bottomRevealMargin + with(density) { imeBottomPx.toDp() }
@@ -385,7 +408,9 @@ private fun EditPageDialog(
     canDelete: Boolean,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
-    onDismissRequest: () -> Unit
+    onDismissRequest: () -> Unit,
+    canSplit: Boolean = false,
+    onSplit: () -> Unit = {}
 ) {
     var newName by remember { mutableStateOf(currentName) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -407,7 +432,17 @@ private fun EditPageDialog(
         AlertDialog(
             onDismissRequest = onDismissRequest,
             title = { Text("Page options") },
-            text = { TextField(value = newName, onValueChange = { newName = it }, singleLine = true) },
+            text = { 
+                Column {
+                    TextField(value = newName, onValueChange = { newName = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (canSplit) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(onClick = onSplit, modifier = Modifier.fillMaxWidth()) {
+                            Text("Split into multiple pages")
+                        }
+                    }
+                }
+            },
             confirmButton = { Button(onClick = { if (newName.isNotBlank()) onRename(newName) }) { Text("Rename") } },
             dismissButton = {
                 androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {

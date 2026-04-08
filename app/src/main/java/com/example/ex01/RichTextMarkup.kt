@@ -345,11 +345,12 @@ fun toggleBulletFormatting(value: TextFieldValue): TextFieldValue {
 
             allSelectedLinesBulleted && lineIsBulleted -> {
                 originalToCleaned[line.start] = cleanedIndex
-                for (index in (line.start + 1) until (line.endExclusive - 1)) {
-                    appendOriginal(index)
-                }
-                if (line.endExclusive > line.start) {
-                    originalToCleaned[line.endExclusive - 1] = cleanedIndex
+                for (index in line.start until line.endExclusive) {
+                    if (raw[index] != BULLET_OPEN_MARKER && raw[index] != BULLET_CLOSE_MARKER) {
+                        appendOriginal(index)
+                    } else {
+                        originalToCleaned[index] = cleanedIndex
+                    }
                 }
                 originalToCleaned[line.endExclusive] = cleanedIndex
             }
@@ -515,9 +516,10 @@ private fun findLineIndexForOffset(lineRanges: List<RawLineRange>, offset: Int):
 }
 
 private fun isBulletedLine(raw: String, line: RawLineRange): Boolean {
-    return line.endExclusive - line.start >= 2 &&
-        raw[line.start] == BULLET_OPEN_MARKER &&
-        raw[line.endExclusive - 1] == BULLET_CLOSE_MARKER
+    for (i in line.start until line.endExclusive) {
+        if (raw[i] == BULLET_OPEN_MARKER) return true
+    }
+    return false
 }
 
 private fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPair): TextFieldValue {
@@ -1513,5 +1515,4 @@ fun parseMarkupColor(raw: String): Color? {
     if (raw.isBlank()) return null
     return runCatching { Color(raw.toColorInt()) }.getOrNull()
 }
-
 

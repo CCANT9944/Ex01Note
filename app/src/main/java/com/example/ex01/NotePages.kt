@@ -102,3 +102,41 @@ fun renameNotePage(serializedBody: String, pageIndex: Int, newName: String): Str
     pages[pageIndex] = formatNotePage(newPage)
     return joinNotePages(pages)
 }
+
+fun splitLongNotePage(serializedBody: String, pageIndex: Int, approximateChars: Int = 1200): String {
+    val pages = splitNotePages(serializedBody).toMutableList()
+    if (pageIndex !in pages.indices) return serializedBody
+    
+    val originalPage = parseNotePage(pages[pageIndex], pageIndex)
+    if (originalPage.body.length <= approximateChars) return serializedBody
+    
+    val textChunks = mutableListOf<String>()
+    var currentText = originalPage.body
+
+    while (currentText.length > approximateChars) {
+        var breakIndex = currentText.lastIndexOf('\n', approximateChars)
+        if (breakIndex == -1 || breakIndex < approximateChars / 2) {
+            breakIndex = currentText.lastIndexOf(' ', approximateChars)
+        }
+        if (breakIndex == -1 || breakIndex < approximateChars / 2) {
+            breakIndex = approximateChars
+        }
+        
+        textChunks.add(currentText.substring(0, breakIndex).trimEnd())
+        currentText = currentText.substring(breakIndex).trimStart()
+    }
+    
+    if (currentText.isNotEmpty()) {
+        textChunks.add(currentText)
+    }
+    
+    val newPages = textChunks.mapIndexed { index, chunk ->
+        val name = if (index == 0) originalPage.name else "${originalPage.name} (Pt ${index + 1})"
+        formatNotePage(NotePage(name, chunk))
+    }
+    
+    pages.removeAt(pageIndex)
+    pages.addAll(pageIndex, newPages)
+    
+    return joinNotePages(pages)
+}

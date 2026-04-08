@@ -104,3 +104,5 @@ or:
 - **Card Expansion Animations:** Expanding and collapsing Folder and Note cards on the Home screen now animates smoothly rather than instantly snapping.
 - **Improved UI in Dark Mode:** Fixed the visibility of the "3 dots" (More options) menu icon on Folders and Notes so it no longer blends into the dark background.
 - **Enhanced "+" Create Menu:** The floating action button's dropdown menu has been upgraded to a wider, better-aligned design featuring Material icons for Notes, Lists, and Folders, complete with a clean separator between item types.
+- **A4 Document Presentation:** The notes editor now renders pages physically simulating an A4 sheet. Pages start with a minimum drop-shadowed surface height and expand beautifully as you type.
+- **Smart Pagination for Long Notes:** You can now instantly split excessively long notes! Long-press on a page tab to access the pagination tool, which intelligently chops large text blocks into perfectly fitting ~500 character chunks, distributing them into cleanly formatted sequential pages (e.g., Pt 1, Pt 2, Pt 3).
