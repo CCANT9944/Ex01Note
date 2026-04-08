@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 object NoteKinds {
     const val CHECKLIST = "CHECKLIST"
     const val FREE_TEXT = "FREE_TEXT"
+    const val SNOTE = "SNOTE"
 }
 
 object NoteListStyles {

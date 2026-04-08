@@ -11,8 +11,10 @@ import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -278,6 +280,12 @@ fun FolderCard(
                                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                                             modifier = Modifier.size(10.dp)
                                         )
+                                        NoteKinds.SNOTE -> Icon(
+                                            Icons.Default.Create,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(10.dp)
+                                        )
                                     }
                                     Spacer(Modifier.width(2.dp))
                                     Text(
@@ -342,6 +350,7 @@ fun NoteCard(
 ) {
     val items by viewModel.getItems(note.id).collectAsStateWithLifecycle(initialValue = emptyList())
     val bodyStyleNote = note.kind == NoteKinds.FREE_TEXT && note.listStyle == NoteListStyles.CHECKLIST
+    val isSNote = note.kind == NoteKinds.SNOTE
     val targetHeight = if (isCollapsed) 64.dp else 190.dp
     val animatedHeight by animateDpAsState(targetValue = targetHeight)
 
@@ -361,6 +370,15 @@ fun NoteCard(
                         .padding(end = 24.dp, bottom = 16.dp)
                 ) {
                     when {
+                        isSNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                Icons.Default.Create,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
                         bodyStyleNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
                             Icon(
                                 Icons.Default.Description,
@@ -380,7 +398,7 @@ fun NoteCard(
                         }
                     }
 
-                    if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT) {
+                    if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT || note.kind == NoteKinds.SNOTE) {
                         Spacer(Modifier.width(8.dp))
                     }
 
@@ -400,6 +418,15 @@ fun NoteCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         when {
+                            isSNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(28.dp)) {
+                                Icon(
+                                    Icons.Default.Create,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
                             bodyStyleNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(28.dp)) {
                                 Icon(
                                     Icons.Default.Description,
@@ -419,7 +446,7 @@ fun NoteCard(
                             }
                         }
 
-                        if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT) {
+                        if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT || note.kind == NoteKinds.SNOTE) {
                             Spacer(Modifier.width(8.dp))
                         }
 
@@ -435,7 +462,13 @@ fun NoteCard(
 
                     Spacer(Modifier.height(4.dp))
 
-                    if (bodyStyleNote) {
+                    if (isSNote) {
+                        Text(
+                            text = if (note.body.isBlank()) "Empty canvas" else "S-Note Drawing",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    } else if (bodyStyleNote) {
                         val previewBody = notePageBody(note.body, 0).trim()
                         val renderedPreviewBody by produceState<AnnotatedString?>(initialValue = null, previewBody) {
                             value = withContext(Dispatchers.Default) {
@@ -629,6 +662,14 @@ fun NoteItemRow(
         }
     }
 }
+
+
+
+
+
+
+
+
 
 
 

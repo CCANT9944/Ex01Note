@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
@@ -180,6 +181,7 @@ fun MainScreen(
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
+    var showSNoteDialog by remember { mutableStateOf(false) }
     var showListDialog by remember { mutableStateOf(false) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
@@ -195,7 +197,7 @@ fun MainScreen(
     val folders by viewModel.rootFolders.collectAsStateWithLifecycle(initialValue = emptyList())
     val notes by viewModel.unassignedNotes.collectAsStateWithLifecycle(initialValue = emptyList())
     val displayLists = notes.filter { it.kind == NoteKinds.CHECKLIST }.sortedBy { it.id }
-    val displayNotes = notes.filter { it.kind == NoteKinds.FREE_TEXT }.sortedBy { it.id }
+    val displayNotes = notes.filter { it.kind == NoteKinds.FREE_TEXT || it.kind == NoteKinds.SNOTE }.sortedBy { it.id }
 
     val folderBounds = remember { mutableStateMapOf<Int, androidx.compose.ui.geometry.Rect>() }
     val collapsedFoldersRepo = remember(context) { CollapsedFoldersRepository(context) }
@@ -233,6 +235,14 @@ fun MainScreen(
                         onClick = {
                             showCreateChooser = false
                             showNoteDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("S-Note") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = {
+                            showCreateChooser = false
+                            showSNoteDialog = true
                         }
                     )
                     DropdownMenuItem(
@@ -478,6 +488,10 @@ fun MainScreen(
             noteDialogTitle = "New Note",
             onCreateNote = { title -> viewModel.addNote(title, kind = NoteKinds.FREE_TEXT) },
             onDismissNoteDialog = { showNoteDialog = false },
+            showSNoteDialog = showSNoteDialog,
+            sNoteDialogTitle = "New S-Note",
+            onCreateSNote = { title -> viewModel.addNote(title, kind = NoteKinds.SNOTE) },
+            onDismissSNoteDialog = { showSNoteDialog = false },
             showListDialog = showListDialog,
             listDialogTitle = "New List",
             onCreateList = { listTitle, listStyle ->
@@ -644,6 +658,7 @@ fun FolderDetailScreen(
     var showFolderDialog by remember { mutableStateOf(false) }
     var showListDialog by remember { mutableStateOf(false) }
     var showNoteDialog by remember { mutableStateOf(false) }
+    var showSNoteDialog by remember { mutableStateOf(false) }
     var noteToDelete by remember { mutableStateOf<Note?>(null) }
     var noteToRename by remember { mutableStateOf<Note?>(null) }
     var noteToChangeStyle by remember { mutableStateOf<Note?>(null) }
@@ -699,6 +714,14 @@ fun FolderDetailScreen(
                         onClick = {
                             showCreateChooser = false
                             showNoteDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("S-Note") },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        onClick = {
+                            showCreateChooser = false
+                            showSNoteDialog = true
                         }
                     )
                     DropdownMenuItem(
@@ -825,6 +848,10 @@ fun FolderDetailScreen(
             noteDialogTitle = "New Note in Folder",
             onCreateNote = { title -> viewModel.addNote(title, folderId, kind = NoteKinds.FREE_TEXT) },
             onDismissNoteDialog = { showNoteDialog = false },
+            showSNoteDialog = showSNoteDialog,
+            sNoteDialogTitle = "New S-Note in Folder",
+            onCreateSNote = { title -> viewModel.addNote(title, folderId, kind = NoteKinds.SNOTE) },
+            onDismissSNoteDialog = { showSNoteDialog = false },
             showListDialog = showListDialog,
             listDialogTitle = "New List in Folder",
             onCreateList = { listTitle, listStyle ->
@@ -1074,6 +1101,10 @@ private fun CreateItemDialogs(
     noteDialogTitle: String,
     onCreateNote: (String) -> Unit,
     onDismissNoteDialog: () -> Unit,
+    showSNoteDialog: Boolean,
+    sNoteDialogTitle: String,
+    onCreateSNote: (String) -> Unit,
+    onDismissSNoteDialog: () -> Unit,
     showListDialog: Boolean,
     listDialogTitle: String,
     onCreateList: (String, String) -> Unit,
@@ -1110,6 +1141,23 @@ private fun CreateItemDialogs(
                 }
             },
             onDismissRequest = onDismissNoteDialog
+        )
+    }
+
+    if (showSNoteDialog) {
+        var title by remember { mutableStateOf("") }
+        TextInputDialog(
+            title = sNoteDialogTitle,
+            value = title,
+            onValueChange = { title = it },
+            confirmText = "Create",
+            onConfirm = {
+                if (title.isNotBlank()) {
+                    onCreateSNote(title)
+                    onDismissSNoteDialog()
+                }
+            },
+            onDismissRequest = onDismissSNoteDialog
         )
     }
 

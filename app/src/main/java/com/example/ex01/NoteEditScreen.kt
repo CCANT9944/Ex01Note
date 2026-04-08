@@ -135,7 +135,7 @@ fun NoteEditScreen(
         val currentNote = note ?: return@rememberUpdatedState
         val updatedNote = currentNote.copy(
             title = noteTitle,
-            body = if (currentNote.kind == NoteKinds.FREE_TEXT) serializedPagesBody else currentNote.body
+            body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
         )
         viewModel.updateNote(updatedNote)
     }
@@ -161,7 +161,7 @@ fun NoteEditScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (noteResolved) noteTitle.ifBlank { "Untitled note" } else "Loading note…",
+                        text = if (noteResolved) noteTitle.ifBlank { "Untitled note" } else "Loading noteï¿½",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -205,13 +205,18 @@ fun NoteEditScreen(
             verticalArrangement = Arrangement.Top
         ) {
 
-            if (showBodyEditor) {
+            if (note?.kind == NoteKinds.SNOTE) {
+                SNoteEditor(
+                    serializedBody = serializedPagesBody,
+                    onSerializedBodyChange = { serializedPagesBody = it }
+                )
+            } else if (showBodyEditor) {
                 PageBodyEditor(
                     serializedPagesBody = serializedPagesBody,
+                    onSerializedPagesBodyChange = { serializedPagesBody = it },
                     selectedPageIndex = selectedPageIndex,
-                    pageControllers = pageControllers,
                     onSelectedPageIndexChange = { selectedPageIndex = it },
-                    onSerializedPagesBodyChange = { serializedPagesBody = it }
+                    pageControllers = pageControllers
                 )
             } else {
                 ChecklistEditor(
@@ -240,4 +245,3 @@ fun NoteEditScreen(
         }
     }
 }
-
