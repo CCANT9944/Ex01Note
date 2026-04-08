@@ -112,3 +112,5 @@ or:
 - **Multi-Page SNote Canvas:** The SNote editor now supports infinite vertical scrolling. The drawing canvas extends downward automatically as you draw, and you can manually extend it with the "Add Page" button.
 - **Realistic Page Separation:** SNote pages are visually segmented with gray page dividers and include automatically assigned a "Page X" watermark at the bottom right corner of each segment to simulate continuous traditional document editing.
 - **Hybrid Input (Scroll & Draw):** Your fingers are freely able to swipe up and down the viewport to scroll the pages, while your S-Pen will seamlessly continue to draw!
+- **Home Screen Checklist Widgets:** Keep your most important lists right on your home screen! You can now deploy Jetpack Glance app widgets that instantly sync with specific Checklists for rapid viewing.
+- **Smooth Widget Animations:** Launching the app directly from a checklist widget uses a satisfying expand-to-fill scale & fade animation, elegantly bringing you right to the checklist you tapped.

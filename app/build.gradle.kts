@@ -70,6 +70,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    implementation(libs.androidx.glance.appwidget)
+
     testImplementation(libs.junit)
     // Testing utilities for coroutines and Architecture components
     testImplementation(libs.coroutines.test)

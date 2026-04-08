@@ -97,14 +97,36 @@ class MainActivity : ComponentActivity() {
             val viewModel: NoteViewModel = viewModel(
                 factory = NoteViewModelFactory(database.noteDao())
             )
-
-            val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList())
+            val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList<Folder>())
 
             val navController = rememberNavController()
+            
+            // Check if opened from Widget 
+            var widgetNoteId by remember { mutableStateOf(intent?.getIntExtra("widget_note_id", -1) ?: -1) }
+            
+            DisposableEffect(Unit) {
+                val listener = androidx.core.util.Consumer<android.content.Intent> { newIntent ->
+                    val id = newIntent.getIntExtra("widget_note_id", -1)
+                    if (id != -1) {
+                        widgetNoteId = id
+                    }
+                }
+                addOnNewIntentListener(listener)
+                onDispose { removeOnNewIntentListener(listener) }
+            }
 
             Ex01Theme(themeMode = themeMode) {
-                val openNote: (Int) -> Unit = { noteId ->
-                    navController.navigate("edit/$noteId") { launchSingleTop = true }
+                val openNote: (Int, Boolean) -> Unit = { noteId, fromWidget ->
+                    val route = if (fromWidget) "edit/$noteId?fromWidget=true" else "edit/$noteId"
+                    navController.navigate(route) { launchSingleTop = true }
+                }
+
+                LaunchedEffect(widgetNoteId) {
+                    if (widgetNoteId != -1) {
+                        openNote(widgetNoteId, true)
+                        widgetNoteId = -1
+                        intent?.removeExtra("widget_note_id")
+                    }
                 }
 
                 NavHost(
@@ -121,7 +143,7 @@ class MainActivity : ComponentActivity() {
                             allFolders = folders,
                             folderColorRepo = folderColorRepo,
                             themeSettingsRepository = themeSettingsRepository,
-                            onNoteClick = openNote,
+                            onNoteClick = { openNote(it, false) },
                             onFolderClick = { folderId -> navController.navigate("folder/$folderId") },
                             onOpenTrash = { navController.navigate("trash") }
                         )
@@ -132,7 +154,20 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() }
                         )
                     }
-                    composable("edit/{noteId}", arguments = listOf(navArgument("noteId") { type = NavType.IntType })) { backStackEntry ->
+                    composable(
+                        "edit/{noteId}?fromWidget={fromWidget}",
+                        arguments = listOf(
+                            navArgument("noteId") { type = NavType.IntType },
+                            navArgument("fromWidget") { type = NavType.BoolType; defaultValue = false }
+                        ),
+                        enterTransition = {
+                            if (targetState.arguments?.getBoolean("fromWidget") == true) {
+                                androidx.compose.animation.scaleIn(initialScale = 0.8f, animationSpec = tween(400)) + androidx.compose.animation.fadeIn(animationSpec = tween(400))
+                            } else {
+                                slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
+                            }
+                        }
+                    ) { backStackEntry ->
                         val noteId = backStackEntry.arguments?.getInt("noteId") ?: -1
                         NoteEditScreen(
                             noteId = noteId,
@@ -154,7 +189,7 @@ class MainActivity : ComponentActivity() {
                             allFolders = folders,
                             folderColorRepo = folderColorRepo,
                             onFolderClick = { childFolderId -> navController.navigate("folder/$childFolderId") },
-                            onNoteClick = openNote,
+                            onNoteClick = { openNote(it, false) },
                             onBack = { navController.popBackStack() }
                         )
                     }

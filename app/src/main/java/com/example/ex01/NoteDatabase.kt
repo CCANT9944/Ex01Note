@@ -113,11 +113,17 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE folderId IS NULL AND isDeleted = 0")
     fun getUnfolderedNotes(): Flow<List<Note>>
 
+    @Query("SELECT * FROM notes WHERE kind = 'CHECKLIST' AND isDeleted = 0")
+    suspend fun getAllChecklistsOnce(): List<Note>
+
     @Query("SELECT * FROM notes WHERE isDeleted = 1")
     fun getDeletedNotes(): Flow<List<Note>>
 
     @Query("SELECT * FROM notes WHERE id = :id")
     fun getNoteById(id: Int): Flow<Note?>
+
+    @Query("SELECT * FROM notes WHERE id = :id AND isDeleted = 0")
+    suspend fun getNoteByIdOnce(id: Int): Note?
 
     @Insert
     suspend fun insertNote(note: Note): Long
@@ -133,6 +139,9 @@ interface NoteDao {
 
     @Query("SELECT * FROM note_items WHERE noteId = :noteId ORDER BY id ASC")
     fun getItemsForNote(noteId: Int): Flow<List<NoteItem>>
+
+    @Query("SELECT * FROM note_items WHERE noteId = :noteId ORDER BY id ASC")
+    suspend fun getItemsForNoteOnce(noteId: Int): List<NoteItem>
 
     @Insert
     suspend fun insertItem(item: NoteItem)
