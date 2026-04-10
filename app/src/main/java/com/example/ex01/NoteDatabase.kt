@@ -110,14 +110,18 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isDeleted = 0")
     suspend fun getAllNotesOnce(): List<Note>
 
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND kind = 'CHECKLIST'")
+    suspend fun getAllChecklistsOnce(): List<Note>
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND kind = 'SNOTE'")
+    suspend fun getAllSNotesOnce(): List<Note>
+
     @Query("SELECT * FROM notes WHERE folderId = :folderId AND isDeleted = 0")
     fun getNotesByFolder(folderId: Int): Flow<List<Note>>
 
     @Query("SELECT * FROM notes WHERE folderId IS NULL AND isDeleted = 0")
     fun getUnfolderedNotes(): Flow<List<Note>>
 
-    @Query("SELECT * FROM notes WHERE kind = 'CHECKLIST' AND isDeleted = 0")
-    suspend fun getAllChecklistsOnce(): List<Note>
 
     @Query("SELECT * FROM notes WHERE isDeleted = 1")
     fun getDeletedNotes(): Flow<List<Note>>

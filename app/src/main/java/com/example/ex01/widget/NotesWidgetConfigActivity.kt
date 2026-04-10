@@ -47,8 +47,8 @@ class NotesWidgetConfigActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     WidgetConfigScreen(
-                        onNoteSelected = { note ->
-                            saveSelectionAndFinish(note.id)
+                        onNotesSelected = { noteId, snoteId ->
+                            saveSelectionAndFinish(noteId, snoteId)
                         }
                     )
                 }
@@ -56,9 +56,12 @@ class NotesWidgetConfigActivity : ComponentActivity() {
         }
     }
 
-    private fun saveSelectionAndFinish(noteId: Int) {
+    private fun saveSelectionAndFinish(noteId: Int, snoteId: Int) {
         val prefs = getSharedPreferences("notes_widget_prefs", MODE_PRIVATE)
-        prefs.edit { putInt("widget_$appWidgetId", noteId) }
+        prefs.edit {
+            putInt("widget_$appWidgetId", noteId)
+            putInt("widget_snote_$appWidgetId", snoteId)
+        }
 
         // Trigger an update on a background scope so it doesn't get cancelled by finish()
         val appContext = applicationContext
@@ -83,35 +86,73 @@ class NotesWidgetConfigActivity : ComponentActivity() {
 }
 
 @Composable
-fun WidgetConfigScreen(onNoteSelected: (Note) -> Unit) {
+fun WidgetConfigScreen(onNotesSelected: (Int, Int) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
+    var checklists by remember { mutableStateOf<List<Note>>(emptyList()) }
+    var snotes by remember { mutableStateOf<List<Note>>(emptyList()) }
+
+    var selectedChecklistId by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         val dao = NoteDatabase.getDatabase(context).noteDao()
-        // We fetch only Checklist objects to show in the list widget
-        notes = dao.getAllChecklistsOnce()
+        checklists = dao.getAllChecklistsOnce()
+        snotes = dao.getAllSNotesOnce()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Select a Checklist for the Widget", style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(16.dp))
+        if (selectedChecklistId == null) {
+            Text("Step 1: Select a Checklist (Left Pane)", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(16.dp))
 
-        if (notes.isEmpty()) {
-            Text("No checklists available. Create one first!")
+            if (checklists.isEmpty()) {
+                Text("No checklists available. Create one first!")
+            } else {
+                LazyColumn {
+                    items(checklists) { note ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { selectedChecklistId = note.id }
+                        ) {
+                            Text(
+                                text = note.title.ifBlank { "Untitled List" },
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
         } else {
-            LazyColumn {
-                items(notes) { note ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                            .clickable { onNoteSelected(note) }
-                    ) {
-                        Text(
-                            text = note.title.ifBlank { "Untitled List" },
-                            modifier = Modifier.padding(16.dp)
-                        )
+            Text("Step 2: Select an SNote (Right Pane)", style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (snotes.isEmpty()) {
+                Text("No SNotes available. Create one first!")
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { onNotesSelected(selectedChecklistId!!, -1) }) {
+                    Text("Skip SNote")
+                }
+            } else {
+                LazyColumn {
+                    items(snotes) { note ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onNotesSelected(selectedChecklistId!!, note.id) }
+                        ) {
+                            Text(
+                                text = note.title.ifBlank { "Untitled SNote" },
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { onNotesSelected(selectedChecklistId!!, -1) }) {
+                            Text("Skip SNote")
+                        }
                     }
                 }
             }
