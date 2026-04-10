@@ -125,7 +125,7 @@ fun NoteEditScreen(
     var serializedPagesBody by rememberSaveable(noteId) { mutableStateOf("") }
     var selectedPageIndex by rememberSaveable(noteId) { mutableIntStateOf(0) }
     val pageControllers = remember(noteId) { mutableMapOf<Int, RichTextEditorController>() }
-    var newItemText by rememberSaveable(noteId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    var newItemText by rememberSaveable(noteId) { mutableStateOf("") }
 
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -264,14 +264,14 @@ fun NoteEditScreen(
                     newItemText = newItemText,
                     onNewItemTextChange = { newItemText = it },
                     onAddItem = {
-                        val trimmedText = newItemText.text.trim()
+                        val trimmedText = newItemText.trim()
                         if (trimmedText.isNotEmpty()) {
                             val appContext = context.applicationContext
                             GlobalScope.launch(Dispatchers.IO) {
                                 viewModel.addItemSync(noteId, trimmedText)
                                 viewModel.triggerWidgetUpdate()
                             }
-                            newItemText = TextFieldValue("")
+                            newItemText = ""
                             true
                         } else {
                             false

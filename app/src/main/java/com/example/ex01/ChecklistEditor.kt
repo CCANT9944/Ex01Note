@@ -59,8 +59,8 @@ import androidx.compose.ui.unit.dp
 fun ChecklistEditor(
     listStyle: String,
     items: List<NoteItem>,
-    newItemText: TextFieldValue,
-    onNewItemTextChange: (TextFieldValue) -> Unit,
+    newItemText: String,
+    onNewItemTextChange: (String) -> Unit,
     onAddItem: () -> Boolean,
     onToggleItem: (NoteItem, Boolean) -> Unit,
     onEditItem: (NoteItem, String) -> Unit,
@@ -82,6 +82,7 @@ fun ChecklistEditor(
         val added = onAddItem()
         if (added) {
             pendingAddedItemCount = items.size + 1
+            onNewItemTextChange("")
         }
         revealChecklistEndRequested = true
     }
@@ -244,4 +245,3 @@ fun ChecklistEditor(
         }
     }
 }
-

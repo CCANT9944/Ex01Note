@@ -31,6 +31,7 @@ import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.appWidgetBackground
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.layout.ContentScale
 import androidx.glance.ImageProvider
 import androidx.glance.Image
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -83,9 +84,10 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
 
     var minX = Float.MAX_VALUE
     var minY = Float.MAX_VALUE
-    var maxX = 0f
-    var maxY = 0f
+    var maxX = Float.MIN_VALUE
+    var maxY = Float.MIN_VALUE
     for (line in lines) {
+        if (line.isEraser || line.points.size < 2) continue // Ignore eraser strokes and purely single-tap garbage bounds
         for (point in line.points) {
             if (point.x < minX) minX = point.x
             if (point.y < minY) minY = point.y
@@ -94,19 +96,22 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
         }
     }
     
-    if (minX == Float.MAX_VALUE) {
-        minX = 0f
-        minY = 0f
+    if (minX == Float.MAX_VALUE || maxX < minX || maxY < minY) {
+        return emptyList() // If there are no usable lines, return nothing
     }
 
-    // Crop the empty space around the drawing so it strictly fills its bounds.
-    val scale = 0.8f
-    val padding = 120f
+    // Anchor exactly to the physical canvas layout width to prevent widget from vertically over-stretching tight crops
+    val renderMinX = 0f
+    val renderMaxX = maxOf(maxX + 64f, 1000f)
+    val renderMinY = maxOf(0f, minY - 64f)
+    val renderMaxY = maxY + 64f
 
-    val totalWidth = ((maxX - minX + padding * 2) * scale).toInt().coerceAtLeast(100)
-    val totalHeight = ((maxY - minY + padding * 2) * scale).toInt().coerceAtLeast(100)
+    val scale = 0.6f
 
-    val maxChunkHeight = 1024
+    val totalWidth = ((renderMaxX - renderMinX) * scale).toInt().coerceAtLeast(100)
+    val totalHeight = ((renderMaxY - renderMinY) * scale).toInt().coerceAtLeast(100)
+
+    val maxChunkHeight = 4096
     val chunks = mutableListOf<Bitmap>()
     var currentY = 0
 
@@ -134,7 +139,7 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
         canvas.save()
         canvas.translate(0f, -currentY.toFloat())
         canvas.scale(scale, scale)
-        canvas.translate(-minX + padding, -minY + padding)
+        canvas.translate(-renderMinX, -renderMinY)
 
         for (line in lines) {
             val path = android.graphics.Path()
@@ -146,7 +151,7 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
             }
 
             // Make the strokes slightly thicker for widget visibility without having to zoom the full Canvas
-            val widgetStrokeMultiplier = 1.8f
+            val widgetStrokeMultiplier = 2.5f
 
             if (line.isEraser) {
                 clearPaint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
@@ -262,7 +267,10 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>, snot
                             Spacer(modifier = GlanceModifier.width(8.dp))
                             Text(
                                 text = item.text,
-                                style = TextStyle(color = ColorProvider(day = textColor, night = textColor))
+                                style = TextStyle(
+                                    color = ColorProvider(day = if (item.isChecked) Color.Gray else textColor, night = if (item.isChecked) Color.Gray else textColor),
+                                    textDecoration = if (item.isChecked) androidx.glance.text.TextDecoration.LineThrough else androidx.glance.text.TextDecoration.None
+                                )
                             )
                         }
                     }
@@ -284,18 +292,17 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>, snot
                 .defaultWeight()
                 .fillMaxHeight()
                 .padding(16.dp)
-                .clickable(
-                    actionStartActivity(
-                        Intent(context, com.example.ex01.MainActivity::class.java).apply {
-                            action = Intent.ACTION_VIEW
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            if (snoteNote != null) {
-                                putExtra("widget_note_id", snoteNote.id)
-                            }
-                        }
-                    )
-                )
         ) {
+            val snoteIntentAction = actionStartActivity(
+                Intent(context, com.example.ex01.MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    if (snoteNote != null) {
+                        putExtra("widget_note_id", snoteNote.id)
+                    }
+                }
+            )
+
             if (snoteNote != null) {
                 Text(
                     text = snoteNote.title.ifBlank { "Untitled SNote" },
@@ -303,26 +310,27 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>, snot
                         color = ColorProvider(day = titleColor, night = titleColor),
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
-                    )
+                    ),
+                    modifier = GlanceModifier.clickable(snoteIntentAction)
                 )
                 Spacer(modifier = GlanceModifier.height(8.dp))
 
                 val chunks = renderSNoteChunks(context, snoteNote.body)
                 if (chunks.isEmpty()) {
-                    Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(modifier = GlanceModifier.fillMaxSize().clickable(snoteIntentAction), contentAlignment = Alignment.Center) {
                         Text(
                             text = "Empty SNote",
                             style = TextStyle(color = ColorProvider(day = Color.Gray, night = Color.Gray))
                         )
                     }
                 } else {
-                    LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
+                    LazyColumn(modifier = GlanceModifier.fillMaxWidth().defaultWeight()) {
                         items(chunks) { bmp ->
                             Image(
                                 provider = ImageProvider(bmp),
                                 contentDescription = "SNote Drawing",
-                                // Remove vertical padding to fix the split image bug, add fillMaxWidth for regular size
-                                modifier = GlanceModifier.fillMaxWidth()
+                                contentScale = ContentScale.Fit,
+                                modifier = GlanceModifier.fillMaxWidth().clickable(snoteIntentAction)
                             )
                         }
                     }

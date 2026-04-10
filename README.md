@@ -90,6 +90,7 @@ or:
 
 - The app is still evolving, and the UI is being refined over time.
 - The rich-text editor focuses on the current toolbar actions, undo flow, and note-editing experience.
+- **The Home Screen Widget is still a work in progress and requires further layout and feature refinements.**
 
 ### Recent Updates
 
@@ -104,6 +105,7 @@ or:
 - **Custom Named Note Pages:** Free-text note pages can now be custom named! Long-press on any page tab to rename or delete the page.
 - **Improved Text Selection Area:** Fixed an issue where swiping to highlight text inside a note incorrectly triggered horizontal page navigation.
 - **Robust Persistence & Saving:** Fixed a bug to ensure page renames, new pages, and text inputs securely save when the app is minimized or closed.
+- **Checklist Input Bug Fix:** Resolved a Samsung Keyboard specific issue ("IME composition bleeding") where the "Add item" text box wouldn't clear its text properly after an item was submitted to the list. Added items now correctly clear the input box across all keyboards!
 - **Under-the-Hood Editor Refactoring:** Drastically modularized the internal codebase, splitting the massive `NoteEditScreen` out into separate, lightweight `ChecklistEditor` and `PageBodyEditor` components for better long-term app maintenance.
 - **Smooth Screen Transitions:** Navigating between the Home screen, Folders, and Notes now uses seamless slide-in and slide-out animations.
 - **Card Expansion Animations:** Expanding and collapsing Folder and Note cards on the Home screen now animates smoothly rather than instantly snapping.
@@ -117,10 +119,13 @@ or:
 - **Multi-Page SNote Canvas:** The SNote editor now supports infinite vertical scrolling. The drawing canvas extends downward automatically as you draw, and you can manually extend it with the "Add Page" button.
 - **Realistic Page Separation:** SNote pages are visually segmented with gray page dividers and include automatically assigned a "Page X" watermark at the bottom right corner of each segment to simulate continuous traditional document editing.
 - **Hybrid Input (Scroll & Draw):** Your fingers are freely able to swipe up and down the viewport to scroll the pages, while your S-Pen will seamlessly continue to draw!
-- **Home Screen Checklist Widgets:** Keep your most important lists right on your home screen! You can now deploy Jetpack Glance app widgets that instantly sync with specific Checklists for rapid viewing.
 
+### Home Screen Widget Updates
+- **Home Screen Checklist Widgets:** Keep your most important lists right on your home screen! You can now deploy Jetpack Glance app widgets that instantly sync with specific Checklists for rapid viewing.
 - **Instant Widget Syncing:** Modifying your Checklist notes (adding items, toggling checkboxes) now safely triggers an immediate real-time update push mechanism to your home screen widget. No more re-opening the app just to force a visual refresh!
 - **Dynamic Widget Theming:** Built robust support for Android's System Night Mode directly into the Glance home screen widget, dynamically shifting the background and text color of the Checklist widget to pure dark gray + white text whenever Dark Mode is active for comfortable viewing.
-- **Rich-Text Split Formatting:** Improved logic for Rich Text Formatting boundaries so bold/italic styles terminate and split accurately at the cursor without trailing into newly typed adjacent lines/words.
 - **Dual-Pane Widget Layout:** Fully redesigned the Home Screen Widget to feature a horizontal dual-pane layout. The left pane securely docks your active Checklist while the right pane intelligently renders your selected SNote.
 - **SNote Drawing Widget Preview:** Added an intelligent renderer that reconstructs your SNote vector drawings directly inside the home screen widget. Includes zoomed-out boundary detection so thick strokes and extensive SNote doodles automatically fit within the widget's constraints!
+- **Widget Canvas Rendering Fixes:** Corrected the SNote widget's bounding box calculation to ignore invisible eraser strokes and single-tap ghost marks, preventing massive empty spaces and scaling issues.
+- **Improved Widget Layout Proportions:** Refined the Jetpack Glance dual-pane widget to use proper scaling weights, eliminating weird list padding and stopping the system from pushing images to the bottom of the widget.
+- **Widget Checklist Strikethrough:** Syncs the visual state of checked items in your checklist widget, displaying them securely greyed out and struck-through so you can instantly recognize completed tasks off your home screen.

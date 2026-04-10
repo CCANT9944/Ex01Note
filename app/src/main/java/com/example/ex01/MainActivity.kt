@@ -132,10 +132,10 @@ class MainActivity : ComponentActivity() {
                 NavHost(
                     navController = navController,
                     startDestination = "list",
-                    enterTransition = { slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it }) },
-                    exitTransition = { slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { -it }) },
-                    popEnterTransition = { slideInHorizontally(animationSpec = tween(400), initialOffsetX = { -it }) },
-                    popExitTransition = { slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { it }) }
+                    enterTransition = { slideInHorizontally(animationSpec = tween(300), initialOffsetX = { it }) },
+                    exitTransition = { slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { -it }) },
+                    popEnterTransition = { slideInHorizontally(animationSpec = tween(300), initialOffsetX = { -it }) },
+                    popExitTransition = { slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { it }) }
                 ) {
                     composable("list") {
                         MainScreen(
@@ -162,9 +162,9 @@ class MainActivity : ComponentActivity() {
                         ),
                         enterTransition = {
                             if (targetState.arguments?.getBoolean("fromWidget") == true) {
-                                androidx.compose.animation.scaleIn(initialScale = 0.8f, animationSpec = tween(400)) + androidx.compose.animation.fadeIn(animationSpec = tween(400))
+                                androidx.compose.animation.scaleIn(initialScale = 0.8f, animationSpec = tween(300)) + androidx.compose.animation.fadeIn(animationSpec = tween(300))
                             } else {
-                                slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
+                                slideInHorizontally(animationSpec = tween(300), initialOffsetX = { it })
                             }
                         }
                     ) { backStackEntry ->
