@@ -598,7 +598,7 @@ internal fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPa
                 val contentStart = enclosingMarkers.openIndex + 1
 
 
-                val shouldSplitAtWhitespaceBoundary = start > contentStart && raw[start - 1].isWhitespace()
+                val shouldSplitAtWhitespaceBoundary = true // Always split the formatting span at the cursor
 
                 if (shouldSplitAtWhitespaceBoundary) {
                     var splitIndex = start
@@ -607,21 +607,38 @@ internal fun toggleFormatting(value: TextFieldValue, markers: FormattingMarkerPa
                     }
 
                     val formattedBefore = raw.substring(contentStart, splitIndex)
-                    val plainAfter = raw.substring(splitIndex, enclosingMarkers.closeIndex)
+                    val trailingWhitespaceIndex = start
+                    var trailingWhitespaceEnd = start
+                    while (trailingWhitespaceEnd < enclosingMarkers.closeIndex && raw[trailingWhitespaceEnd].isWhitespace()) {
+                        trailingWhitespaceEnd++
+                    }
+
+                    val spaceBetween = raw.substring(splitIndex, start)
+                    val remainingAfterCursor = raw.substring(start, enclosingMarkers.closeIndex)
                     val prefix = raw.substring(0, enclosingMarkers.openIndex)
                     val suffix = raw.substring(enclosingMarkers.closeIndex + 1)
-                    val rebuilt = buildString(raw.length + 4) {
+                    val rebuilt = buildString(raw.length + 8) {
                         append(prefix)
                         if (formattedBefore.isNotEmpty()) {
                             append(markers.openMarker)
                             append(formattedBefore)
                             append(markers.closeMarker)
                         }
-                        append(plainAfter)
+                        append(spaceBetween)
+                        // At the cursor, if there is text after, we wrap it
+                        if (remainingAfterCursor.isNotEmpty()) {
+                            append(markers.openMarker)
+                            append(remainingAfterCursor)
+                            append(markers.closeMarker)
+                        }
                         append(suffix)
                     }
 
-                    rebuildValue(normalized, rebuilt, TextRange(rebuilt.length - suffix.length))
+                    val cursorOffset = prefix.length +
+                                       (if (formattedBefore.isNotEmpty()) formattedBefore.length + 2 else 0) +
+                                       spaceBetween.length
+
+                    rebuildValue(normalized, rebuilt, TextRange(cursorOffset))
                 } else if (start == enclosingMarkers.closeIndex) {
                     rebuildValue(normalized, raw, TextRange(start + 1))
                 } else if (start == contentStart) {

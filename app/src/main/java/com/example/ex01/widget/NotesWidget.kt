@@ -62,11 +62,16 @@ class NotesWidget : GlanceAppWidget() {
 
 @Composable
 fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>) {
+    val isNightMode = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    val bgColor = if (isNightMode) Color(0xFF141218) else Color.White
+    val textColor = if (isNightMode) Color.White else Color.DarkGray
+    val titleColor = if (isNightMode) Color.White else Color.Black
+
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .appWidgetBackground()
-            .background(ColorProvider(day = Color.White, night = Color.White))
+            .background(ColorProvider(day = bgColor, night = bgColor))
             .cornerRadius(16.dp)
             .padding(16.dp)
             // Opens the app and passes the specific noteId to open the Checklist!
@@ -93,7 +98,7 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>) {
         Text(
             text = note.title.ifBlank { "Untitled List" },
             style = TextStyle(
-                color = ColorProvider(day = Color.Black, night = Color.White),
+                color = ColorProvider(day = titleColor, night = titleColor),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -132,7 +137,7 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>) {
                         Spacer(modifier = GlanceModifier.width(8.dp))
                         Text(
                             text = item.text,
-                            style = TextStyle(color = ColorProvider(day = Color.DarkGray, night = Color.LightGray))
+                            style = TextStyle(color = ColorProvider(day = textColor, night = textColor))
                         )
                     }
                 }

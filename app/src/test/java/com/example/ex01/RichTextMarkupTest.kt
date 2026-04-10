@@ -276,8 +276,9 @@ class RichTextMarkupTest {
 
         val unbolded = toggleBoldFormatting(value)
 
-        assertEquals("Hello world", unbolded.text)
-        assertEquals(TextRange(8), unbolded.selection)
+        // Now expects the span to be split at the caret instead of entirely removed
+        assertEquals("Hello \uE000wo\uE001\uE000rld\uE001", unbolded.text)
+        assertEquals(TextRange(10), unbolded.selection)
     }
 
     @Test
@@ -603,8 +604,9 @@ class RichTextMarkupTest {
 
         val unitalicized = toggleItalicFormatting(value)
 
-        assertEquals("Hello world", unitalicized.text)
-        assertEquals(TextRange(8), unitalicized.selection)
+        // Now expects the span to be split at the caret instead of entirely removed
+        assertEquals("Hello \uE002wo\uE003\uE002rld\uE003", unitalicized.text)
+        assertEquals(TextRange(10), unitalicized.selection)
     }
 
     @Test
@@ -864,4 +866,3 @@ class RichTextMarkupTest {
         assertTrue(isStrikethroughFormattingActive(value))
     }
 }
-

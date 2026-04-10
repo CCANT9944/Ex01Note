@@ -118,4 +118,7 @@ or:
 - **Realistic Page Separation:** SNote pages are visually segmented with gray page dividers and include automatically assigned a "Page X" watermark at the bottom right corner of each segment to simulate continuous traditional document editing.
 - **Hybrid Input (Scroll & Draw):** Your fingers are freely able to swipe up and down the viewport to scroll the pages, while your S-Pen will seamlessly continue to draw!
 - **Home Screen Checklist Widgets:** Keep your most important lists right on your home screen! You can now deploy Jetpack Glance app widgets that instantly sync with specific Checklists for rapid viewing.
-- **Smooth Widget Animations:** Launching the app directly from a checklist widget uses a satisfying expand-to-fill scale & fade animation, elegantly bringing you right to the checklist you tapped.
+
+- **Instant Widget Syncing:** Modifying your Checklist notes (adding items, toggling checkboxes) now safely triggers an immediate real-time update push mechanism to your home screen widget. No more re-opening the app just to force a visual refresh!
+- **Dynamic Widget Theming:** Built robust support for Android's System Night Mode directly into the Glance home screen widget, dynamically shifting the background and text color of the Checklist widget to pure dark gray + white text whenever Dark Mode is active for comfortable viewing.
+- **Rich-Text Split Formatting:** Improved logic for Rich Text Formatting boundaries so bold/italic styles terminate and split accurately at the cursor without trailing into newly typed adjacent lines/words.

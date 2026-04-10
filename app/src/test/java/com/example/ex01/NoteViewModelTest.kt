@@ -29,6 +29,7 @@ class FakeNoteDao : NoteDao {
     override suspend fun deleteFolder(folder: Folder) { foldersList.removeAll { it.id == folder.id } }
 
     override fun getAllNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { !it.isDeleted }) }
+    override suspend fun getAllNotesOnce(): List<Note> = notesList.filter { !it.isDeleted }
     override fun getNotesByFolder(folderId: Int) = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == folderId && !it.isDeleted }) }
     override fun getUnfolderedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == null && !it.isDeleted }) }
     override fun getNoteById(id: Int) = kotlinx.coroutines.flow.flow { emit(notesList.firstOrNull { it.id == id }) }
@@ -70,7 +71,7 @@ class NoteViewModelTest {
     @Before
     fun setup() {
         dao = FakeNoteDao()
-        vm = NoteViewModel(dao)
+        vm = NoteViewModel(android.app.Application(), dao)
     }
 
     @Test

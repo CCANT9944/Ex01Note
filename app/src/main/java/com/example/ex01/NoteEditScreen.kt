@@ -97,6 +97,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.appwidget.AppWidgetManager
+import androidx.glance.appwidget.updateAll
+import com.example.ex01.widget.NotesWidget
+import com.example.ex01.widget.NotesWidgetReceiver
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import android.content.ComponentName
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -117,6 +127,10 @@ fun NoteEditScreen(
     val pageControllers = remember(noteId) { mutableMapOf<Int, RichTextEditorController>() }
     var newItemText by rememberSaveable(noteId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var isSaving by remember { mutableStateOf(false) }
+
     LaunchedEffect(note?.id, note?.title, note?.body, showBodyEditor) {
         val currentNote = note
         if (currentNote != null) {
@@ -131,20 +145,49 @@ fun NoteEditScreen(
         }
     }
 
-    val currentPersistDraft by androidx.compose.runtime.rememberUpdatedState {
-        val currentNote = note ?: return@rememberUpdatedState
-        val updatedNote = currentNote.copy(
-            title = noteTitle,
-            body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
-        )
-        viewModel.updateNote(updatedNote)
+    val handleBack: () -> Unit = {
+        if (!isSaving && note != null) {
+            isSaving = true
+            scope.launch {
+                val currentNote = note!!
+                val updatedNote = currentNote.copy(
+                    title = noteTitle,
+                    body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
+                )
+                val appContext = context.applicationContext
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    viewModel.updateNoteSync(updatedNote)
+                    try {
+                        viewModel.triggerWidgetUpdate()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                onBack()
+            }
+        } else if (note == null) {
+            onBack()
+        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                currentPersistDraft()
+                if (!isSaving) {
+                    val currentNote = note ?: return@LifecycleEventObserver
+                    val updatedNote = currentNote.copy(
+                        title = noteTitle,
+                        body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
+                    )
+                    val appContext = context.applicationContext
+                    GlobalScope.launch(Dispatchers.IO) {
+                        viewModel.updateNoteSync(updatedNote)
+                        try {
+                            viewModel.triggerWidgetUpdate()
+                        } catch (e: Exception) {}
+                    }
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -152,8 +195,7 @@ fun NoteEditScreen(
     }
 
     BackHandler(enabled = note != null) {
-        currentPersistDraft()
-        onBack()
+        handleBack()
     }
 
     Scaffold(
@@ -161,16 +203,13 @@ fun NoteEditScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (noteResolved) noteTitle.ifBlank { "Untitled note" } else "Loading note�",
+                        text = if (noteResolved) noteTitle.ifBlank { "Untitled note" } else "Loading note",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        currentPersistDraft()
-                        onBack()
-                    }) {
+                    IconButton(onClick = handleBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -227,16 +266,38 @@ fun NoteEditScreen(
                     onAddItem = {
                         val trimmedText = newItemText.text.trim()
                         if (trimmedText.isNotEmpty()) {
-                            viewModel.addItem(noteId, trimmedText)
+                            val appContext = context.applicationContext
+                            GlobalScope.launch(Dispatchers.IO) {
+                                viewModel.addItemSync(noteId, trimmedText)
+                                viewModel.triggerWidgetUpdate()
+                            }
                             newItemText = TextFieldValue("")
                             true
                         } else {
                             false
                         }
                     },
-                    onToggleItem = { item, checked -> viewModel.updateItem(item.copy(isChecked = checked)) },
-                    onEditItem = { item, nextText -> viewModel.updateItem(item.copy(text = nextText)) },
-                    onDeleteItem = { item -> viewModel.deleteItem(item) },
+                    onToggleItem = { item, checked -> 
+                        val appContext = context.applicationContext
+                        GlobalScope.launch(Dispatchers.IO) {
+                            viewModel.updateItemSync(item.copy(isChecked = checked))
+                            viewModel.triggerWidgetUpdate()
+                        }
+                    },
+                    onEditItem = { item, nextText -> 
+                        val appContext = context.applicationContext
+                        GlobalScope.launch(Dispatchers.IO) {
+                            viewModel.updateItemSync(item.copy(text = nextText))
+                            viewModel.triggerWidgetUpdate()
+                        }
+                    },
+                    onDeleteItem = { item -> 
+                        val appContext = context.applicationContext
+                        GlobalScope.launch(Dispatchers.IO) {
+                            viewModel.deleteItemSync(item)
+                            viewModel.triggerWidgetUpdate()
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)

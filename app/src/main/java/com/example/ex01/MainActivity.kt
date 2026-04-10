@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
                 WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = themeMode == ThemeMode.LIGHT
             }
             val viewModel: NoteViewModel = viewModel(
-                factory = NoteViewModelFactory(database.noteDao())
+                factory = NoteViewModelFactory(application, database.noteDao())
             )
             val folders by viewModel.folders.collectAsStateWithLifecycle(initialValue = emptyList<Folder>())
 
