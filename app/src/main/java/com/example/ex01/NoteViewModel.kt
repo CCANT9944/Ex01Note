@@ -52,11 +52,15 @@ class NoteViewModel(application: Application, private val dao: NoteDao) : Androi
         }
     }
 
+    private var widgetUpdateJob: kotlinx.coroutines.Job? = null
+
     private fun refreshWidget() {
         val appContext = getApplication<Application>()
-        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            // Restore a minimal 200ms delay to prevent SQLite from racing against the Widget update flow
-            kotlinx.coroutines.delay(200)
+        widgetUpdateJob?.cancel()
+        @Suppress("OPT_IN_USAGE")
+        widgetUpdateJob = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Debounce rapid calls to prevent binder/canvas limit overload, particularly when checking items
+            kotlinx.coroutines.delay(800)
             try {
                 NotesWidget().updateAll(appContext)
                 val widgetManager = android.appwidget.AppWidgetManager.getInstance(appContext)

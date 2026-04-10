@@ -180,7 +180,7 @@ fun NoteEditScreen(
                         title = noteTitle,
                         body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
                     )
-                    val appContext = context.applicationContext
+                    @Suppress("OPT_IN_USAGE")
                     GlobalScope.launch(Dispatchers.IO) {
                         viewModel.updateNoteSync(updatedNote)
                         try {
@@ -266,7 +266,7 @@ fun NoteEditScreen(
                     onAddItem = {
                         val trimmedText = newItemText.trim()
                         if (trimmedText.isNotEmpty()) {
-                            val appContext = context.applicationContext
+                            @Suppress("OPT_IN_USAGE")
                             GlobalScope.launch(Dispatchers.IO) {
                                 viewModel.addItemSync(noteId, trimmedText)
                                 viewModel.triggerWidgetUpdate()
@@ -278,21 +278,21 @@ fun NoteEditScreen(
                         }
                     },
                     onToggleItem = { item, checked -> 
-                        val appContext = context.applicationContext
+                        @Suppress("OPT_IN_USAGE")
                         GlobalScope.launch(Dispatchers.IO) {
                             viewModel.updateItemSync(item.copy(isChecked = checked))
                             viewModel.triggerWidgetUpdate()
                         }
                     },
                     onEditItem = { item, nextText -> 
-                        val appContext = context.applicationContext
+                        @Suppress("OPT_IN_USAGE")
                         GlobalScope.launch(Dispatchers.IO) {
                             viewModel.updateItemSync(item.copy(text = nextText))
                             viewModel.triggerWidgetUpdate()
                         }
                     },
                     onDeleteItem = { item -> 
-                        val appContext = context.applicationContext
+                        @Suppress("OPT_IN_USAGE")
                         GlobalScope.launch(Dispatchers.IO) {
                             viewModel.deleteItemSync(item)
                             viewModel.triggerWidgetUpdate()

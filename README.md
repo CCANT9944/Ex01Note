@@ -94,6 +94,9 @@ or:
 
 ### Recent Updates
 
+- **UI Transition & Animation Polish:** Finetuned all screen navigation animations to perfectly balance snappiness with smooth native-feeling 250ms glide transitions.
+- **Under-the-Hood App Dialogs Refactoring:** Extracted all popup dialogs (renaming, color selection, item creation, deletion confirmations) from the main activity into a dedicated `AppDialogs.kt` file, vastly cleaning up the root codebase for easier maintenance.
+- **Performance & Widget Optimization:** Implemented a smart debounce loop on database text entries to prevent the background widget renderer from overloading the UI thread during rapid checklist typing, maximizing responsiveness.
 - **SNote Theme & Eraser Fixes:** Resolved an issue where SNote backgrounds and strokes didn't properly adapt when switching between Light and Dark themes, and completely fixed the eraser tool's functionality to ensure smooth corrections.
 - **Rich-Text Formatting Fix:** Resolved a catastrophic bug in the Free-text editor where deleting text right after formatting toggles (like Bold or Italic) caused the formatting to bleed out and corrupt the entire document. Input intercepts now perfectly protect hidden style boundaries.
 - **Trash Bin added:** A safety net has been added for deleted Notes and Folders. You can now restore or permanently remove items via the new Trash Bin accessible from the App Settings menu.
