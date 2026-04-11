@@ -102,8 +102,8 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             
             // Check if opened from Widget 
-            var widgetNoteId by remember { mutableStateOf(intent?.getIntExtra("widget_note_id", -1) ?: -1) }
-            
+            var widgetNoteId by remember { mutableIntStateOf(intent?.getIntExtra("widget_note_id", -1) ?: -1) }
+
             DisposableEffect(Unit) {
                 val listener = androidx.core.util.Consumer<android.content.Intent> { newIntent ->
                     val id = newIntent.getIntExtra("widget_note_id", -1)

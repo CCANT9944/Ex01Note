@@ -95,7 +95,6 @@ fun FolderActionsDialog(
         title = { Text(folder.name) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onExpandCollapse) { Text(if (isCollapsed) "Expand" else "Collapse") }
                 TextButton(onClick = onRename) { Text("Rename") }
                 TextButton(onClick = onMoveToFolder) { Text("Move to folder") }
                 TextButton(onClick = onChangeColor) { Text("Change icon color") }

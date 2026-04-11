@@ -169,7 +169,7 @@ internal fun PageBodyEditor(
             Spacer(modifier = Modifier.height(8.dp))
 
             androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -180,7 +180,7 @@ internal fun PageBodyEditor(
                         shape = RoundedCornerShape(50),
                         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
-                        border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Color.Transparent else MaterialTheme.colorScheme.outline),
                         modifier = Modifier.combinedClickable(
                             onClick = { onSelectedPageIndexChange(index) },
                             onLongClick = { editingPageIndex = index }

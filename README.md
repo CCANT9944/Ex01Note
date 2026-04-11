@@ -132,3 +132,10 @@ or:
 - **Widget Canvas Rendering Fixes:** Corrected the SNote widget's bounding box calculation to ignore invisible eraser strokes and single-tap ghost marks, preventing massive empty spaces and scaling issues.
 - **Improved Widget Layout Proportions:** Refined the Jetpack Glance dual-pane widget to use proper scaling weights, eliminating weird list padding and stopping the system from pushing images to the bottom of the widget.
 - **Widget Checklist Strikethrough:** Syncs the visual state of checked items in your checklist widget, displaying them securely greyed out and struck-through so you can instantly recognize completed tasks off your home screen.
+- **Stable Navigation Layouts:** Resolved a layout shift bug in the Note editor where horizontal scrolling would cause the entire page to wobble up and down. The page tab row is now strictly locked in place.
+- **Refined Folder UI:** Enlarged folder icons for better visual hierarchy while squeezing folder names to perfectly fit inside the standard card size.
+- **Streamlined Folder Interactions:** Removed the old 3-dot "More options" button from folder cards in favor of a modern touch-and-hold (long-press) gesture to access the folder actions menu.
+- **Cleaner Action Menus:** Simplified the folder action menu by removing redundant "Expand/Collapse" options.
+- **SNote Tool Memory:** The SNote editor now persistently remembers your preferred pen and eraser thickness across sessions, so you don't have to re-select your stroke size every time you open a note.
+- **Iconography Polish:** Updated the SNote eraser tool to use a much more visually accurate and distinct custom eraser icon.
+- **Codebase Optimization:** Cleaned up several Kotlin compiler warnings across the project, including primitive state autoboxing issues and shifting to optimized KTX extension functions for Canvas and SharedPreferences.

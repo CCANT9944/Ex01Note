@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -183,7 +184,10 @@ fun FolderCard(
         modifier = modifier
             .fillMaxWidth()
             .height(animatedHeight)
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { if (showMenu) onMenuClick() }
+            ),
 
         shape = RoundedCornerShape(14.dp),
         color = containerColor,
@@ -196,12 +200,12 @@ fun FolderCard(
                     FolderLabelStack(
                         name = folder.name,
                         modifier = Modifier.fillMaxWidth(),
-                        iconSize = 28.dp,
-                        textStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
+                        iconSize = 48.dp,
+                        textStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 11.sp),
                         textColor = if (showMenu) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                         iconTint = iconTint,
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        spacing = 4.dp
+                        spacing = 0.dp
                     )
                 }
             } else {
@@ -209,12 +213,12 @@ fun FolderCard(
                     FolderLabelStack(
                         name = folder.name,
                         modifier = Modifier.fillMaxWidth(),
-                        iconSize = 28.dp,
-                        textStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
+                        iconSize = 44.dp,
+                        textStyle = MaterialTheme.typography.titleSmall.copy(fontSize = 11.sp),
                         textColor = MaterialTheme.colorScheme.onSurface,
                         iconTint = iconTint,
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        spacing = 4.dp
+                        spacing = (-4).dp
                     )
 
 
@@ -309,22 +313,6 @@ fun FolderCard(
                             }
                         }
                     }
-                }
-            }
-
-            if (showMenu) {
-                IconButton(
-                    onClick = onMenuClick,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.MoreHoriz,
-                        contentDescription = "Folder actions",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
                 }
             }
 
@@ -662,6 +650,10 @@ fun NoteItemRow(
         }
     }
 }
+
+
+
+
 
 
 

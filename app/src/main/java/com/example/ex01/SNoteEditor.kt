@@ -7,7 +7,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,11 +19,16 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.verticalScroll
+import android.content.Context
+import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -94,19 +98,60 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
     return lines
 }
 
+private val EraserIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Eraser",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
+            moveTo(16.24f, 3.56f)
+            lineTo(21.19f, 8.5f)
+            curveTo(21.97f, 9.29f, 21.97f, 10.65f, 21.19f, 11.44f)
+            lineTo(12.0f, 20.63f)
+            curveTo(11.6f, 21.0f, 11.1f, 21.2f, 10.58f, 21.2f)
+            horizontalLineTo(2.0f)
+            verticalLineTo(19.2f)
+            horizontalLineTo(8.38f)
+            lineTo(16.24f, 3.56f)
+            moveTo(11.17f, 17.0f)
+            lineTo(19.08f, 9.08f)
+            lineTo(15.65f, 5.65f)
+            lineTo(7.74f, 13.57f)
+            lineTo(11.17f, 17.0f)
+            close()
+        }
+    }.build()
+
+@Suppress("SpellCheckingInspection")
 @Composable
 fun SNoteEditor(
     serializedBody: String,
     onSerializedBodyChange: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("snote_settings", Context.MODE_PRIVATE) }
+
     val drawingLines = remember { mutableStateListOf<DrawingLine>() }
     var currentPath by remember { mutableStateOf<List<Offset>?>(null) }
     var currentProperties by remember { mutableStateOf(DrawingLine(emptyList())) }
     var isEraserMode by remember { mutableStateOf(false) }
-    var currentThickness by remember { mutableStateOf(6f) }
+    var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", 6f)) }
     var showThicknessMenu by remember { mutableStateOf(false) }
-    var currentEraserThickness by remember { mutableStateOf(40f) }
+    var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", 40f)) }
     var showEraserThicknessMenu by remember { mutableStateOf(false) }
+
+    fun updatePenThickness(t: Float) {
+        currentThickness = t
+        prefs.edit { putFloat("pen_thickness", t) }
+    }
+
+    fun updateEraserThickness(t: Float) {
+        currentEraserThickness = t
+        prefs.edit { putFloat("eraser_thickness", t) }
+    }
 
     var pageCount by remember { mutableIntStateOf(1) }
     var pageHeightPx by remember { mutableFloatStateOf(0f) }
@@ -155,9 +200,9 @@ fun SNoteEditor(
                     expanded = showThicknessMenu,
                     onDismissRequest = { showThicknessMenu = false }
                 ) {
-                    DropdownMenuItem(text = { Text("Thin") }, onClick = { currentThickness = 3f; showThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Medium") }, onClick = { currentThickness = 6f; showThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Thick") }, onClick = { currentThickness = 12f; showThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Thin") }, onClick = { updatePenThickness(3f); showThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Medium") }, onClick = { updatePenThickness(6f); showThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Thick") }, onClick = { updatePenThickness(12f); showThicknessMenu = false })
                 }
             }
             Box {
@@ -173,15 +218,15 @@ fun SNoteEditor(
                         containerColor = if (isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                     )
                 ) {
-                    Icon(Icons.Default.Clear, contentDescription = "Eraser")
+                    Icon(EraserIcon, contentDescription = "Eraser")
                 }
                 DropdownMenu(
                     expanded = showEraserThicknessMenu,
                     onDismissRequest = { showEraserThicknessMenu = false }
                 ) {
-                    DropdownMenuItem(text = { Text("Thin") }, onClick = { currentEraserThickness = 20f; showEraserThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Medium") }, onClick = { currentEraserThickness = 40f; showEraserThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Thick") }, onClick = { currentEraserThickness = 80f; showEraserThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Thin") }, onClick = { updateEraserThickness(20f); showEraserThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Medium") }, onClick = { updateEraserThickness(40f); showEraserThicknessMenu = false })
+                    DropdownMenuItem(text = { Text("Thick") }, onClick = { updateEraserThickness(80f); showEraserThicknessMenu = false })
                 }
             }
 
@@ -303,8 +348,8 @@ fun SNoteEditor(
                                 drawContext.canvas.nativeCanvas.drawText(
                                     "Page ${i + 1}",
                                     size.width - 16.dp.toPx(),
-                                    pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
-                                    textPaint
+                                    pageBottomY - 24.dp.toPx() // Slightly above the bottom edge
+                                    , textPaint
                                 )
                             }
 
