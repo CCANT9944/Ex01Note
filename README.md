@@ -124,6 +124,9 @@ or:
 - **Hybrid Input (Scroll & Draw):** Your fingers are freely able to swipe up and down the viewport to scroll the pages, while your S-Pen will seamlessly continue to draw!
 
 ### Home Screen Widget Updates
+- **Widget Memory Optimization:** Fixed a severe Android memory crash (TransactionTooLargeException) where large SNotes with extensive vertical scrolling would generate rendering chunks too large for the launcher's IPC limits. SNote chunks are now capped at a safe height.
+- **Improved Widget Defaults:** The widget now gracefully defaults to a 4x2 layout on the home screen when added, ensuring both the Checklist and SNote fit perfectly without requiring immediate manual resizing.
+- **Status Bar Overlap Fix:** Corrected a UI bug in the "Widget Configuration" screen where the content would overlap with the device's transparent status bar; it now properly respects system window insets (`systemBarsPadding`).
 - **Home Screen Checklist Widgets:** Keep your most important lists right on your home screen! You can now deploy Jetpack Glance app widgets that instantly sync with specific Checklists for rapid viewing.
 - **Instant Widget Syncing:** Modifying your Checklist notes (adding items, toggling checkboxes) now safely triggers an immediate real-time update push mechanism to your home screen widget. No more re-opening the app just to force a visual refresh!
 - **Dynamic Widget Theming:** Built robust support for Android's System Night Mode directly into the Glance home screen widget, dynamically shifting the background and text color of the Checklist widget to pure dark gray + white text whenever Dark Mode is active for comfortable viewing.
@@ -139,3 +142,12 @@ or:
 - **SNote Tool Memory:** The SNote editor now persistently remembers your preferred pen and eraser thickness across sessions, so you don't have to re-select your stroke size every time you open a note.
 - **Iconography Polish:** Updated the SNote eraser tool to use a much more visually accurate and distinct custom eraser icon.
 - **Codebase Optimization:** Cleaned up several Kotlin compiler warnings across the project, including primitive state autoboxing issues and shifting to optimized KTX extension functions for Canvas and SharedPreferences.
+- **Buttery Smooth Navigation:** Greatly smoothed out the transition animations when entering and exiting notes by offloading aggressive database saves and heavy JSON drawing parsing onto background threads, completely eliminating UI stutter.
+- **Luxurious Transitions:** Increased the default Jetpack Compose slide transition speeds from 250ms to 400ms for a more polished feel.
+- **Visual SNote Menus:** Upgraded the SNote Pen and Eraser selection dropdowns from plain text to rich visual canvas previews. You can now clearly see the physical line thickness of your selection and which tool is currently active.
+- **SNote True Erasing (BlendMode.Clear):** Re-architected the SNote drawing surface into dual hardware layers. Erasing now uses true transparent wiping rather than painting over previous strokes with background colors, preventing ugly graphical glitches when swapping between Light and Dark themes.
+- **Intelligent Dark Mode Ink:** Fixed an issue where default black or white pen strokes would become invisible permanently when switching between System Light Mode and Dark Mode. Ink now intelligently inverts.
+- **Unlimited Undo & Redo:** Fully implemented endless Undo and Redo functionality into the SNote editor so you can easily step back and correctly fix your exact drawing history.
+- **Scrollable SNote Toolbar:** Refitted the top SNote toolbar into a polished, elevated, horizontally scrollable layout with vertical dividers. This allows additional drawing tools to seamlessly slide in sideways while keeping the "Clear All" safety button permanently pinned in sight.
+- **Color Palette Control:** Brought colorful drawing to life! Added 4 distinct ink color options (Red, Blue, Green, Brown) directly into the SNote editor palette.
+- **Clear All Safety Warning:** Integrated a mandatory confirmation `AlertDialog` directly into the SNote "Clear All" action to prevent accidental permanent deletion of your artwork.

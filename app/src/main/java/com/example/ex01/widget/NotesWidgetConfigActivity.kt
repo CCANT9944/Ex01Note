@@ -99,7 +99,7 @@ fun WidgetConfigScreen(onNotesSelected: (Int, Int) -> Unit) {
         snotes = dao.getAllSNotesOnce()
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)) {
         if (selectedChecklistId == null) {
             Text("Step 1: Select a Checklist (Left Pane)", style = MaterialTheme.typography.titleLarge)
             Spacer(modifier = Modifier.height(16.dp))

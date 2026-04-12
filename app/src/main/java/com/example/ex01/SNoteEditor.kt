@@ -5,9 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -17,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -27,10 +32,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.zIndex
 import android.content.Context
 import androidx.core.content.edit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+private const val PREFS_NAME = "snote_settings"
+private const val PEN_THIN = 3f
+private const val PEN_MEDIUM = 6f
+private const val PEN_THICK = 12f
+
+private const val ERASER_THIN = 20f
+private const val ERASER_MEDIUM = 40f
+private const val ERASER_THICK = 80f
 
 data class DrawingLine(
     val points: List<Offset>,
@@ -83,14 +101,21 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
                 val pObj = pointArray.getJSONObject(p)
                 points.add(Offset(pObj.getDouble("x").toFloat(), pObj.getDouble("y").toFloat()))
             }
-            val color = Color(lineObj.optLong("color", Color.Black.value.toLong()).toULong())
+            val rawColor = Color(lineObj.optLong("color", Color.Unspecified.value.toLong()).toULong())
             val stroke = lineObj.optDouble("stroke", 5.0).toFloat()
             val isEraser = lineObj.optBoolean("isEraser", false)
             
             // Heuristic for old lines without isEraser flag: old eraser lines either matched the default M3 surface colors or were much thicker (min eraser thickness is 20f, max pen is 12f).
-            val inferredEraser = isEraser || (!lineObj.has("isEraser") && (stroke >= 20f || color == Color(0xFFFFFBFE) || color == Color(0xFF1C1B1F) || color == Color(0xFF141218))) 
-            
-            lines.add(DrawingLine(points, color, stroke, inferredEraser))
+            val inferredEraser = isEraser || (!lineObj.has("isEraser") && (stroke >= 20f || rawColor == Color(0xFFFFFBFE) || rawColor == Color(0xFF1C1B1F) || rawColor == Color(0xFF141218)))
+
+            // For older drawings that hardcoded "black" or "white" or specific theme surface colors, fallback to Unspecified so it dynamically adapts.
+            val finalColor = if (!inferredEraser && rawColor != Color.Red && rawColor != Color.Blue && rawColor != Color.Green && rawColor != Color(0xFFA52A2A)) {
+                Color.Unspecified
+            } else {
+                rawColor
+            }
+
+            lines.add(DrawingLine(points, finalColor, stroke, inferredEraser))
         }
     } catch (e: Exception) {
         e.printStackTrace()
@@ -125,23 +150,26 @@ private val EraserIcon: ImageVector
         }
     }.build()
 
-@Suppress("SpellCheckingInspection")
 @Composable
 fun SNoteEditor(
     serializedBody: String,
     onSerializedBodyChange: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = remember(context) { context.getSharedPreferences("snote_settings", Context.MODE_PRIVATE) }
+    val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     val drawingLines = remember { mutableStateListOf<DrawingLine>() }
+    val undoneLines = remember { mutableStateListOf<DrawingLine>() }
     var currentPath by remember { mutableStateOf<List<Offset>?>(null) }
     var currentProperties by remember { mutableStateOf(DrawingLine(emptyList())) }
     var isEraserMode by remember { mutableStateOf(false) }
-    var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", 6f)) }
+    var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", PEN_MEDIUM)) }
     var showThicknessMenu by remember { mutableStateOf(false) }
-    var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", 40f)) }
+    var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", ERASER_MEDIUM)) }
     var showEraserThicknessMenu by remember { mutableStateOf(false) }
+    var currentColorValue by remember { mutableLongStateOf(prefs.getLong("pen_color", Color.Unspecified.value.toLong())) }
+    var showColorMenu by remember { mutableStateOf(false) }
+    var showClearWarning by remember { mutableStateOf(false) }
 
     fun updatePenThickness(t: Float) {
         currentThickness = t
@@ -153,13 +181,20 @@ fun SNoteEditor(
         prefs.edit { putFloat("eraser_thickness", t) }
     }
 
+    fun updatePenColor(c: Long) {
+        currentColorValue = c
+        prefs.edit { putLong("pen_color", c) }
+    }
+
     var pageCount by remember { mutableIntStateOf(1) }
     var pageHeightPx by remember { mutableFloatStateOf(0f) }
     var pageHeightDp by remember { mutableStateOf(0.dp) }
 
     LaunchedEffect(serializedBody, pageHeightPx) {
         if (drawingLines.isEmpty() && serializedBody.isNotBlank() && currentPath == null && pageHeightPx > 0f) {
-            val lines = deserializeDrawing(serializedBody)
+            val lines = withContext(Dispatchers.Default) {
+                deserializeDrawing(serializedBody)
+            }
             drawingLines.addAll(lines)
             val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
             if (maxY > 0) {
@@ -173,74 +208,221 @@ fun SNoteEditor(
         onSerializedBodyChange(serializeDrawing(drawingLines))
     }
 
+    val strokeColor = MaterialTheme.colorScheme.onSurface
+    val eraserColor = MaterialTheme.colorScheme.surface
+    val primaryColor = MaterialTheme.colorScheme.primary
+
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth().zIndex(1f),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shadowElevation = 6.dp
         ) {
-            Box {
-                IconButton(
-                    onClick = {
-                        if (!isEraserMode) {
-                            showThicknessMenu = true
-                        } else {
-                            isEraserMode = false
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                // Scrollable Tools Group
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Box {
+                        IconButton(
+                            onClick = {
+                                if (!isEraserMode) {
+                                    showThicknessMenu = true
+                                } else {
+                                    isEraserMode = false
+                                }
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = if (!isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                            )
+                        ) {
+                            Icon(Icons.Default.Create, contentDescription = "Pen")
                         }
-                    },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (!isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-                    )
-                ) {
-                    Icon(Icons.Default.Create, contentDescription = "Pen")
-                }
-                DropdownMenu(
-                    expanded = showThicknessMenu,
-                    onDismissRequest = { showThicknessMenu = false }
-                ) {
-                    DropdownMenuItem(text = { Text("Thin") }, onClick = { updatePenThickness(3f); showThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Medium") }, onClick = { updatePenThickness(6f); showThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Thick") }, onClick = { updatePenThickness(12f); showThicknessMenu = false })
-                }
-            }
-            Box {
-                IconButton(
-                    onClick = {
-                        if (isEraserMode) {
-                            showEraserThicknessMenu = true
-                        } else {
-                            isEraserMode = true
+                        DropdownMenu(
+                            expanded = showThicknessMenu,
+                            onDismissRequest = { showThicknessMenu = false },
+                            modifier = Modifier.width(48.dp) // Force tight width constraint
+                        ) {
+                            listOf(PEN_THIN, PEN_MEDIUM, PEN_THICK).forEach { thickness ->
+                                DropdownMenuItem(
+                                    modifier = if (currentThickness == thickness) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    contentPadding = PaddingValues(horizontal = 4.dp), // Tiny padding
+                                    text = {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
+                                            Canvas(modifier = Modifier.size(32.dp, 24.dp)) {
+                                                drawLine(
+                                                    color = if (currentThickness == thickness) primaryColor else strokeColor,
+                                                    start = Offset(0f, size.height / 2),
+                                                    end = Offset(size.width, size.height / 2),
+                                                    strokeWidth = thickness,
+                                                    cap = StrokeCap.Round
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = { updatePenThickness(thickness); showThicknessMenu = false }
+                                )
+                            }
                         }
-                    },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                    }
+                    Box {
+                        IconButton(
+                            onClick = {
+                                if (isEraserMode) {
+                                    showEraserThicknessMenu = true
+                                } else {
+                                    isEraserMode = true
+                                }
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = if (isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                            )
+                        ) {
+                            Icon(EraserIcon, contentDescription = "Eraser")
+                        }
+                        DropdownMenu(
+                            expanded = showEraserThicknessMenu,
+                            onDismissRequest = { showEraserThicknessMenu = false },
+                            modifier = Modifier.width(48.dp) // Force tight width constraint
+                        ) {
+                            val eraserVisualColor = strokeColor.copy(alpha = 0.3f)
+                            listOf(ERASER_THIN, ERASER_MEDIUM, ERASER_THICK).forEach { thickness ->
+                                DropdownMenuItem(
+                                    modifier = if (currentEraserThickness == thickness) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    contentPadding = PaddingValues(horizontal = 4.dp), // Tiny padding
+                                    text = {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = androidx.compose.ui.Alignment.Center
+                                        ) {
+                                            Canvas(modifier = Modifier.size(32.dp, 24.dp)) {
+                                                drawLine(
+                                                    color = if (currentEraserThickness == thickness) primaryColor.copy(alpha = 0.5f) else eraserVisualColor,
+                                                    start = Offset(0f, size.height / 2),
+                                                    end = Offset(size.width, size.height / 2),
+                                                    strokeWidth = thickness,
+                                                    cap = StrokeCap.Round
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = { updateEraserThickness(thickness); showEraserThicknessMenu = false }
+                                )
+                            }
+                        }
+                    }
+
+                    Box {
+                        IconButton(onClick = { showColorMenu = true }) {
+                            Box(modifier = Modifier
+                                .size(24.dp)
+                                .background(if (currentColorValue == Color.Unspecified.value.toLong()) strokeColor else Color(currentColorValue.toULong()), shape = CircleShape)
+                                .border(1.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showColorMenu,
+                            onDismissRequest = { showColorMenu = false },
+                            modifier = Modifier.width(48.dp)
+                        ) {
+                            val penColors = listOf(
+                                Color.Unspecified,
+                                Color.Red,
+                                Color.Blue,
+                                Color.Green,
+                                Color(0xFFA52A2A)
+                            )
+                            penColors.forEach { c ->
+                                DropdownMenuItem(
+                                    contentPadding = PaddingValues(horizontal = 4.dp),
+                                    text = {
+                                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                            Box(modifier = Modifier
+                                                .size(24.dp)
+                                                .background(if (c == Color.Unspecified) strokeColor else c, shape = CircleShape)
+                                                .border(1.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        updatePenColor(c.value.toLong())
+                                        showColorMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     )
-                ) {
-                    Icon(EraserIcon, contentDescription = "Eraser")
-                }
-                DropdownMenu(
-                    expanded = showEraserThicknessMenu,
-                    onDismissRequest = { showEraserThicknessMenu = false }
-                ) {
-                    DropdownMenuItem(text = { Text("Thin") }, onClick = { updateEraserThickness(20f); showEraserThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Medium") }, onClick = { updateEraserThickness(40f); showEraserThicknessMenu = false })
-                    DropdownMenuItem(text = { Text("Thick") }, onClick = { updateEraserThickness(80f); showEraserThicknessMenu = false })
-                }
-            }
 
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = {
-                drawingLines.clear()
-                commitChanges()
-            }) {
-                Text("Clear All")
-            }
-        }
+                    IconButton(
+                        onClick = {
+                            if (drawingLines.isNotEmpty()) {
+                                undoneLines.add(drawingLines.removeAt(drawingLines.size - 1))
+                                commitChanges()
+                            }
+                        },
+                        enabled = drawingLines.isNotEmpty()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                    }
 
-        val strokeColor = MaterialTheme.colorScheme.onSurface
-        val eraserColor = MaterialTheme.colorScheme.surface
+                    IconButton(
+                        onClick = {
+                            if (undoneLines.isNotEmpty()) {
+                                drawingLines.add(undoneLines.removeAt(undoneLines.size - 1))
+                                commitChanges()
+                            }
+                        },
+                        enabled = undoneLines.isNotEmpty()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                    }
+                } // Close Scrollable Row
+
+                // Fixed right-side actions
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .height(24.dp)
+                            .width(1.dp)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextButton(
+                        onClick = {
+                            if (drawingLines.isNotEmpty()) {
+                                showClearWarning = true
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Clear All")
+                    }
+                }
+            } // Close Outer Row
+        } // Close Surface Toolbar
 
         Surface(
             modifier = Modifier
@@ -268,11 +450,24 @@ fun SNoteEditor(
                         .verticalScroll(rememberScrollState())
                 ) {
                     if (pageHeightDp > 0.dp) {
+                        // Background & Dividers Layer
                         Canvas(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(pageHeightDp * pageCount)
-                                .pointerInput(Unit) {
+                        ) {
+                            // Fill whole background first
+                            drawRect(color = eraserColor, size = size)
+                            drawPageLayout(pageCount, pageHeightPx)
+                        }
+
+                        // Drawing Storkes Layer
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(pageHeightDp * pageCount)
+                                .graphicsLayer(alpha = 0.99f) // Force offscreen layer to support true transparent erasing
+                                .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode) {
                                     awaitPointerEventScope {
                                         while (true) {
                                             val event = awaitPointerEvent()
@@ -289,9 +484,11 @@ fun SNoteEditor(
                                                 if (currentPath == null) {
                                                     currentPath = listOf(change.position)
                                                     val actualEraserMode = isStylusEraser || isEraserMode
+                                                    val cVal = Color(currentColorValue.toULong())
+                                                    val chosenColor = if (cVal == Color.Red || cVal == Color.Blue || cVal == Color.Green || cVal == Color(0xFFA52A2A)) cVal else Color.Unspecified
                                                     currentProperties = DrawingLine(
                                                         points = currentPath!!,
-                                                        color = if (actualEraserMode) eraserColor else strokeColor,
+                                                        color = if (actualEraserMode) Color.Unspecified else chosenColor,
                                                         strokeWidth = if (actualEraserMode) currentEraserThickness else currentThickness,
                                                         isEraser = actualEraserMode
                                                      )
@@ -301,6 +498,7 @@ fun SNoteEditor(
                                             } else {
                                                 if (currentPath != null) {
                                                     drawingLines.add(currentProperties.copy(points = currentPath!!))
+                                                    undoneLines.clear()
                                                     currentPath = null
                                                     commitChanges()
                                                 }
@@ -309,74 +507,34 @@ fun SNoteEditor(
                                     }
                                 }
                         ) {
-                            // Fill whole background first
-                            drawRect(color = eraserColor, size = size)
-
-                            // Draw thick visual dividers to make pages look distinct
-                            for (i in 1 until pageCount) {
-                                val y = i * pageHeightPx
-                                drawRect(
-                                    color = Color.Gray.copy(alpha = 0.3f),
-                                    topLeft = Offset(0f, y - 8.dp.toPx()),
-                                    size = Size(size.width, 16.dp.toPx())
-                                )
-                                // Add a slight shadow/borderline effect
-                                drawLine(
-                                    color = Color.DarkGray,
-                                    start = Offset(0f, y - 8.dp.toPx()),
-                                    end = Offset(size.width, y - 8.dp.toPx()),
-                                    strokeWidth = 1.dp.toPx()
-                                )
-                                drawLine(
-                                    color = Color.DarkGray,
-                                    start = Offset(0f, y + 8.dp.toPx()),
-                                    end = Offset(size.width, y + 8.dp.toPx()),
-                                    strokeWidth = 1.dp.toPx()
-                                )
-                            }
-
-                            // Draw page numbers at the bottom right
-                            val textSizePx = 14.dp.toPx()
-                            val textPaint = android.graphics.Paint().apply {
-                                color = android.graphics.Color.GRAY
-                                textSize = textSizePx
-                                textAlign = android.graphics.Paint.Align.RIGHT
-                                isAntiAlias = true
-                            }
-                            for (i in 0 until pageCount) {
-                                val pageBottomY = (i + 1) * pageHeightPx
-                                drawContext.canvas.nativeCanvas.drawText(
-                                    "Page ${i + 1}",
-                                    size.width - 16.dp.toPx(),
-                                    pageBottomY - 24.dp.toPx() // Slightly above the bottom edge
-                                    , textPaint
-                                )
-                            }
-
                             // Draw saved lines
                             drawingLines.forEach { line ->
+                                val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
                                 drawPath(
                                     path = line.toPath(),
-                                    color = if (line.isEraser) eraserColor else strokeColor,
+                                    color = if (line.isEraser) Color.Black else activeLineColor, // Color ignored for Clear blend mode
                                     style = Stroke(
                                         width = line.strokeWidth,
                                         cap = StrokeCap.Round,
                                         join = StrokeJoin.Round
-                                    )
+                                    ),
+                                    blendMode = if (line.isEraser) androidx.compose.ui.graphics.BlendMode.Clear else androidx.compose.ui.graphics.BlendMode.SrcOver
                                 )
                             }
 
                             // Draw active line
                             currentPath?.let { pathOffsets ->
                                 val activeLine = currentProperties.copy(points = pathOffsets)
+                                val activeLineColor = if (activeLine.color == Color.Unspecified || activeLine.color == Color.Black || activeLine.color == Color.White) strokeColor else activeLine.color
                                 drawPath(
                                     path = activeLine.toPath(),
-                                    color = if (activeLine.isEraser) eraserColor else strokeColor,
+                                    color = if (activeLine.isEraser) Color.Black else activeLineColor,
                                     style = Stroke(
                                         width = activeLine.strokeWidth,
                                         cap = StrokeCap.Round,
                                         join = StrokeJoin.Round
-                                    )
+                                    ),
+                                    blendMode = if (activeLine.isEraser) androidx.compose.ui.graphics.BlendMode.Clear else androidx.compose.ui.graphics.BlendMode.SrcOver
                                 )
                             }
                         }
@@ -397,5 +555,77 @@ fun SNoteEditor(
                 }
             }
         }
+
+        if (showClearWarning) {
+            AlertDialog(
+                onDismissRequest = { showClearWarning = false },
+                title = { Text("Clear All") },
+                text = { Text("Are you sure you want to clear the entire drawing? This action cannot be undone.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            drawingLines.clear()
+                            undoneLines.clear()
+                            commitChanges()
+                            showClearWarning = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Clear")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearWarning = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageLayout(
+    pageCount: Int,
+    pageHeightPx: Float
+) {
+    // Draw thick visual dividers to make pages look distinct
+    for (i in 1 until pageCount) {
+        val y = i * pageHeightPx
+        drawRect(
+            color = Color.Gray.copy(alpha = 0.3f),
+            topLeft = Offset(0f, y - 8.dp.toPx()),
+            size = Size(size.width, 16.dp.toPx())
+        )
+        // Add a slight shadow/borderline effect
+        drawLine(
+            color = Color.DarkGray,
+            start = Offset(0f, y - 8.dp.toPx()),
+            end = Offset(size.width, y - 8.dp.toPx()),
+            strokeWidth = 1.dp.toPx()
+        )
+        drawLine(
+            color = Color.DarkGray,
+            start = Offset(0f, y + 8.dp.toPx()),
+            end = Offset(size.width, y + 8.dp.toPx()),
+            strokeWidth = 1.dp.toPx()
+        )
+    }
+
+    // Draw page numbers at the bottom right
+    val textSizePx = 14.dp.toPx()
+    val textPaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.GRAY
+        textSize = textSizePx
+        textAlign = android.graphics.Paint.Align.RIGHT
+        isAntiAlias = true
+    }
+    for (i in 0 until pageCount) {
+        val pageBottomY = (i + 1) * pageHeightPx
+        drawContext.canvas.nativeCanvas.drawText(
+            "Page ${i + 1}",
+            size.width - 16.dp.toPx(),
+            pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
+            textPaint
+        )
     }
 }

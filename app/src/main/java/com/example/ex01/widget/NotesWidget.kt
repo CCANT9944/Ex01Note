@@ -111,7 +111,7 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
     val totalWidth = ((renderMaxX - renderMinX) * scale).toInt().coerceAtLeast(100)
     val totalHeight = ((renderMaxY - renderMinY) * scale).toInt().coerceAtLeast(100)
 
-    val maxChunkHeight = 4096
+    val maxChunkHeight = 800
     val chunks = mutableListOf<Bitmap>()
     var currentY = 0
 

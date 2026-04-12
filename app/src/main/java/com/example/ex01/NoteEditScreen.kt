@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -128,7 +129,6 @@ fun NoteEditScreen(
     var newItemText by rememberSaveable(noteId) { mutableStateOf("") }
 
     val context = LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var isSaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id, note?.title, note?.body, showBodyEditor) {
@@ -145,53 +145,45 @@ fun NoteEditScreen(
         }
     }
 
-    val handleBack: () -> Unit = {
+    val saveNote = {
         if (!isSaving && note != null) {
             isSaving = true
-            scope.launch {
-                val currentNote = note!!
-                val updatedNote = currentNote.copy(
-                    title = noteTitle,
-                    body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
-                )
-                val appContext = context.applicationContext
-                kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    viewModel.updateNoteSync(updatedNote)
-                    try {
-                        viewModel.triggerWidgetUpdate()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+            val currentNote = note!!
+            val updatedNote = currentNote.copy(
+                title = noteTitle,
+                body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
+            )
+            @Suppress("OPT_IN_USAGE")
+            GlobalScope.launch(Dispatchers.IO) {
+                viewModel.updateNoteSync(updatedNote)
+                try {
+                    viewModel.triggerWidgetUpdate()
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-                onBack()
             }
-        } else if (note == null) {
-            onBack()
         }
+    }
+
+    val handleBack: () -> Unit = {
+        // Just trigger standard back navigation immediately.
+        // The save and database work will safely execute on the background lifecycle stop.
+        onBack()
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            // Use ON_STOP to flush data to DB. Works without lagging the exit animation over on ON_PAUSE!
             if (event == Lifecycle.Event.ON_STOP) {
-                if (!isSaving) {
-                    val currentNote = note ?: return@LifecycleEventObserver
-                    val updatedNote = currentNote.copy(
-                        title = noteTitle,
-                        body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
-                    )
-                    @Suppress("OPT_IN_USAGE")
-                    GlobalScope.launch(Dispatchers.IO) {
-                        viewModel.updateNoteSync(updatedNote)
-                        try {
-                            viewModel.triggerWidgetUpdate()
-                        } catch (e: Exception) {}
-                    }
-                }
+                saveNote()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            saveNote()
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     BackHandler(enabled = note != null) {
