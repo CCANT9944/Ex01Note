@@ -87,11 +87,12 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
     var maxX = Float.MIN_VALUE
     var maxY = Float.MIN_VALUE
     for (line in lines) {
-        if (line.isEraser || line.points.size < 2) continue // Ignore eraser strokes and purely single-tap garbage bounds
+        if (line.isEraser || (line.points.size < 2 && line.text == null)) continue // Ignore eraser strokes and purely single-tap garbage bounds
         for (point in line.points) {
+            val extraBounds = if (line.text != null) 200f else 0f
             if (point.x < minX) minX = point.x
-            if (point.y < minY) minY = point.y
-            if (point.x > maxX) maxX = point.x
+            if (point.y - line.strokeWidth < minY) minY = point.y - line.strokeWidth
+            if (point.x + extraBounds > maxX) maxX = point.x + extraBounds
             if (point.y > maxY) maxY = point.y
         }
     }
@@ -132,16 +133,40 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
 
     while (currentY < totalHeight) {
         val chunkHeight = minOf(maxChunkHeight, totalHeight - currentY)
+        @Suppress("UseKtx")
         val bitmap = Bitmap.createBitmap(totalWidth, chunkHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.TRANSPARENT)
 
+        @Suppress("UseKtx")
         canvas.save()
         canvas.translate(0f, -currentY.toFloat())
         canvas.scale(scale, scale)
         canvas.translate(-renderMinX, -renderMinY)
 
         for (line in lines) {
+            if (line.text != null && line.points.isNotEmpty()) {
+                var uiColor = line.color
+                if (isNightMode) {
+                    val luminance = (0.299f * uiColor.red) + (0.587f * uiColor.green) + (0.114f * uiColor.blue)
+                    if (luminance < 0.4f) {
+                        uiColor = Color.White
+                    }
+                }
+                val textPaint = android.graphics.Paint().apply {
+                    textSize = line.strokeWidth
+                    isAntiAlias = true
+                    color = android.graphics.Color.argb(
+                        (uiColor.alpha * 255).toInt(),
+                        (uiColor.red * 255).toInt(),
+                        (uiColor.green * 255).toInt(),
+                        (uiColor.blue * 255).toInt()
+                    )
+                }
+                canvas.drawText(line.text, line.points.first().x, line.points.first().y - textPaint.fontMetrics.ascent, textPaint)
+                continue
+            }
+
             val path = android.graphics.Path()
             if (line.points.isNotEmpty()) {
                 path.moveTo(line.points.first().x, line.points.first().y)
@@ -156,6 +181,35 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
             if (line.isEraser) {
                 clearPaint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
                 canvas.drawPath(path, clearPaint)
+            } else if (line.isHighlighter) {
+                paint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
+                var uiColor = line.color
+                
+                if (isNightMode) {
+                    val luminance = (0.299f * uiColor.red) + (0.587f * uiColor.green) + (0.114f * uiColor.blue)
+                    if (luminance < 0.4f) {
+                        uiColor = Color.White
+                    }
+                }
+                
+                paint.color = android.graphics.Color.argb(
+                    (0.4f * 255).toInt(), // 40% alpha for highlighter
+                    (uiColor.red * 255).toInt(),
+                    (uiColor.green * 255).toInt(),
+                    (uiColor.blue * 255).toInt()
+                )
+                
+                val originalXfermode = paint.xfermode
+                val originalCap = paint.strokeCap
+                
+                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+                paint.strokeCap = Paint.Cap.SQUARE
+                
+                canvas.drawPath(path, paint)
+                
+                // Reset
+                paint.xfermode = originalXfermode
+                paint.strokeCap = originalCap
             } else {
                 paint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
                 var uiColor = line.color
