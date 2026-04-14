@@ -128,6 +128,26 @@ fun NoteEditScreen(
     val items by viewModel.getItems(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT
 
+    var isTransitionFinished by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isTransitionFinished = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Fallback timer just in case ON_RESUME doesn't fire right (e.g. from Widget launch edge-cases)
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(400) // Match the 400ms enter transition animation exactly
+        isTransitionFinished = true
+    }
+
     var noteResolved by remember(noteId) { mutableStateOf(false) }
     var draftInitialized by rememberSaveable(noteId) { mutableStateOf(false) }
     var noteTitle by rememberSaveable(noteId) { mutableStateOf("") }
@@ -155,19 +175,24 @@ fun NoteEditScreen(
 
     val saveNote = {
         if (!isSaving && note != null) {
-            isSaving = true
             val currentNote = note!!
             val updatedNote = currentNote.copy(
                 title = noteTitle,
                 body = if (currentNote.kind == NoteKinds.FREE_TEXT || currentNote.kind == NoteKinds.SNOTE) serializedPagesBody else currentNote.body
             )
-            @Suppress("OPT_IN_USAGE")
-            GlobalScope.launch(Dispatchers.IO) {
-                viewModel.updateNoteSync(updatedNote)
-                try {
-                    viewModel.triggerWidgetUpdate()
-                } catch (e: Exception) {
-                    e.printStackTrace()
+
+            // Smart Render Culling: Only save and trigger flow emissions if the note ACTUALLY changed.
+            // This prevents massive recomposition spikes on the Home screen during the exit animation.
+            if (updatedNote != currentNote) {
+                isSaving = true
+                @Suppress("OPT_IN_USAGE")
+                GlobalScope.launch(Dispatchers.IO) {
+                    viewModel.updateNoteSync(updatedNote)
+                    try {
+                        viewModel.triggerWidgetUpdate()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }
@@ -179,7 +204,6 @@ fun NoteEditScreen(
         onBack()
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             // Use ON_STOP to flush data to DB. Works without lagging the exit animation over on ON_PAUSE!
@@ -244,7 +268,11 @@ fun NoteEditScreen(
             verticalArrangement = Arrangement.Top
         ) {
 
-            if (note?.kind == NoteKinds.SNOTE) {
+            if (!isTransitionFinished && (note?.kind == NoteKinds.SNOTE || showBodyEditor)) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (note?.kind == NoteKinds.SNOTE) {
                 SNoteEditor(
                     serializedBody = serializedPagesBody,
                     onSerializedBodyChange = { serializedPagesBody = it }
