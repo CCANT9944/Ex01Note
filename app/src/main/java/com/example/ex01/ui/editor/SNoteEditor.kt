@@ -49,221 +49,21 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val PREFS_NAME = "snote_settings"
-private const val PEN_THIN = 3f
-private const val PEN_MEDIUM = 6f
-private const val PEN_THICK = 12f
-
-private const val ERASER_THIN = 20f
-private const val ERASER_MEDIUM = 40f
-private const val ERASER_THICK = 80f
-
-private const val HIGHLIGHTER_THIN = 15f
-private const val HIGHLIGHTER_MEDIUM = 30f
-private const val HIGHLIGHTER_THICK = 50f
-
-private const val TEXT_MEDIUM = 40f
-private const val TEXT_LARGE = 64f
-
-private val ALLOWED_PEN_COLORS = listOf(
-    Color.Red,
-    Color.Blue,
-    Color.Green,
-    Color(0xFFA52A2A), // Brown
-    Color(0xFFFF9999), // Light Red
-    Color(0xFF99FF99), // Light Green
-    Color(0xFF99CCFF), // Light Blue
-    Color.Yellow
-)
-
-data class DrawingLine(
-    val points: List<Offset>,
-    val color: Color = Color.Black,
-    val strokeWidth: Float = 5f,
-    val isEraser: Boolean = false,
-    val isHighlighter: Boolean = false,
-    val text: String? = null
-) {
-    fun toPath(): Path {
-        val path = Path()
-        if (points.isNotEmpty()) {
-            path.moveTo(points.first().x, points.first().y)
-            for (i in 1 until points.size) {
-                path.lineTo(points[i].x, points[i].y)
-            }
-        }
-        return path
-    }
-}
-
-fun serializeDrawing(lines: List<DrawingLine>): String {
-    val jsonArray = JSONArray()
-    for (line in lines) {
-        val pointArray = JSONArray()
-        for (point in line.points) {
-            val pObj = JSONObject()
-            pObj.put("x", point.x)
-            pObj.put("y", point.y)
-            pointArray.put(pObj)
-        }
-        val lineObj = JSONObject()
-        lineObj.put("points", pointArray)
-        lineObj.put("color", line.color.value.toLong())
-        lineObj.put("stroke", line.strokeWidth.toDouble()) // Float cast
-        lineObj.put("isEraser", line.isEraser)
-        lineObj.put("isHighlighter", line.isHighlighter)
-        if (line.text != null) {
-            lineObj.put("text", line.text)
-        }
-        jsonArray.put(lineObj)
-    }
-    return jsonArray.toString()
-}
-
-fun deserializeDrawing(json: String): List<DrawingLine> {
-    if (json.isBlank()) return emptyList()
-    val lines = mutableListOf<DrawingLine>()
-    try {
-        val jsonArray = JSONArray(json)
-        for (i in 0 until jsonArray.length()) {
-            val lineObj = jsonArray.getJSONObject(i)
-            val pointArray = lineObj.getJSONArray("points")
-            val points = mutableListOf<Offset>()
-            for (p in 0 until pointArray.length()) {
-                val pObj = pointArray.getJSONObject(p)
-                points.add(Offset(pObj.getDouble("x").toFloat(), pObj.getDouble("y").toFloat()))
-            }
-            val rawColor = Color(lineObj.optLong("color", Color.Unspecified.value.toLong()).toULong())
-            val stroke = lineObj.optDouble("stroke", 5.0).toFloat()
-            val isEraser = lineObj.optBoolean("isEraser", false)
-            val isHighlighter = lineObj.optBoolean("isHighlighter", false)
-            val text = if (lineObj.has("text")) lineObj.getString("text") else null
-
-            // Heuristic for old lines without isEraser flag: old eraser lines either matched the default M3 surface colors or were much thicker (min eraser thickness is 20f, max pen is 12f).
-            val inferredEraser = isEraser || (!lineObj.has("isEraser") && (stroke >= 20f || rawColor == Color(0xFFFFFBFE) || rawColor == Color(0xFF1C1B1F) || rawColor == Color(0xFF141218)))
-
-            // For older drawings that hardcoded "black" or "white" or specific theme surface colors, fallback to Unspecified so it dynamically adapts.
-            val finalColor = if (!inferredEraser && rawColor !in ALLOWED_PEN_COLORS) {
-                Color.Unspecified
-            } else {
-                rawColor
-            }
-
-            lines.add(DrawingLine(points, finalColor, stroke, inferredEraser, isHighlighter, text))
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-    return lines
-}
-
-private val EraserIcon: ImageVector
-    get() = ImageVector.Builder(
-        name = "Eraser",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    ).apply {
-        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
-            moveTo(16.24f, 3.56f)
-            lineTo(21.19f, 8.5f)
-            curveTo(21.97f, 9.29f, 21.97f, 10.65f, 21.19f, 11.44f)
-            lineTo(12.0f, 20.63f)
-            curveTo(11.6f, 21.0f, 11.1f, 21.2f, 10.58f, 21.2f)
-            horizontalLineTo(2.0f)
-            verticalLineTo(19.2f)
-            horizontalLineTo(8.38f)
-            lineTo(16.24f, 3.56f)
-            moveTo(11.17f, 17.0f)
-            lineTo(19.08f, 9.08f)
-            lineTo(15.65f, 5.65f)
-            lineTo(7.74f, 13.57f)
-            lineTo(11.17f, 17.0f)
-            close()
-        }
-    }.build()
-
-private val TextIcon: ImageVector
-    get() = ImageVector.Builder(
-        name = "Text",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    ).apply {
-        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
-            moveTo(5f, 4f)
-            verticalLineTo(7f)
-            horizontalLineTo(10.5f)
-            verticalLineTo(19f)
-            horizontalLineTo(13.5f)
-            verticalLineTo(7f)
-            horizontalLineTo(19f)
-            verticalLineTo(4f)
-            close()
-        }
-    }.build()
-
-private val HighlighterIcon: ImageVector
-    get() = ImageVector.Builder(
-        name = "Highlighter",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f
-    ).apply {
-        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
-            moveTo(17.75f, 7.0f)
-            lineTo(14.0f, 3.25f)
-            lineTo(15.4f, 1.85f)
-            curveTo(15.79f, 1.46f, 16.42f, 1.46f, 16.81f, 1.85f)
-            lineTo(19.15f, 4.19f)
-            curveTo(19.54f, 4.58f, 19.54f, 5.21f, 19.15f, 5.6f)
-            lineTo(17.75f, 7.0f)
-            moveTo(12.6f, 8.4f)
-            lineTo(16.35f, 12.15f)
-            lineTo(7.15f, 21.35f)
-            lineTo(3.4f, 17.6f)
-            lineTo(12.6f, 8.4f)
-            moveTo(2.0f, 21.2f)
-            horizontalLineTo(22.0f)
-            verticalLineTo(23.2f)
-            horizontalLineTo(2.0f)
-            verticalLineTo(21.2f)
-            close()
-        }
-    }.build()
-
 @Composable
 fun SNoteEditor(
     serializedBody: String,
-    onSerializedBodyChange: (String) -> Unit
-) {
+    onSerializedBodyChange: (String) -> Unit,
+    viewModel: SNoteViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+) = with(viewModel) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
-    val drawingLines = remember { mutableStateListOf<DrawingLine>() }
-    val undoneLines = remember { mutableStateListOf<DrawingLine>() }
-    var currentPath by remember { mutableStateOf<List<Offset>?>(null) }
-    var currentProperties by remember { mutableStateOf(DrawingLine(emptyList())) }
-    var isEraserMode by remember { mutableStateOf(false) }
-    var isHighlighterMode by remember { mutableStateOf(false) }
-    var isTextMode by remember { mutableStateOf(false) }
     var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_MEDIUM)) }
-    var showTextSizeMenu by remember { mutableStateOf(false) }
-    var activeTextInputPosition by remember { mutableStateOf<Offset?>(null) }
-    var activeTextValue by remember { mutableStateOf(TextFieldValue("")) }
     val focusRequester = remember { FocusRequester() }
     var currentHighlighterThickness by remember { mutableFloatStateOf(prefs.getFloat("highlighter_thickness", HIGHLIGHTER_MEDIUM)) }
-    var showHighlighterThicknessMenu by remember { mutableStateOf(false) }
     var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", PEN_MEDIUM)) }
-    var showThicknessMenu by remember { mutableStateOf(false) }
     var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", ERASER_MEDIUM)) }
-    var showEraserThicknessMenu by remember { mutableStateOf(false) }
     var currentColorValue by remember { mutableLongStateOf(prefs.getLong("pen_color", Color.Unspecified.value.toLong())) }
-    var showColorMenu by remember { mutableStateOf(false) }
-    var showClearWarning by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     fun updatePenThickness(t: Float) {
@@ -291,14 +91,10 @@ fun SNoteEditor(
         prefs.edit { putLong("pen_color", c) }
     }
 
-    var pageCount by remember { mutableIntStateOf(1) }
     var pageHeightPx by remember { mutableFloatStateOf(0f) }
     var pageHeightDp by remember { mutableStateOf(0.dp) }
 
-    var initialLoadDone by remember { mutableStateOf(false) }
 
-    var originalHitLine by remember { mutableStateOf<DrawingLine?>(null) }
-    var originalHitIndex by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(serializedBody, pageHeightPx) {
         if (!initialLoadDone && pageHeightPx > 0f) {
