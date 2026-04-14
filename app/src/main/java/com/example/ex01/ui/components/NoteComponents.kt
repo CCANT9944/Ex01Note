@@ -32,6 +32,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -406,11 +408,71 @@ fun NoteCard(
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 Column(modifier = Modifier.fillMaxSize().padding(end = 4.dp, start = 4.dp)) {
                     if (isSNote) {
-                        Text(
-                            text = if (note.body.isBlank()) "Empty canvas" else "S-Note Drawing",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
+                        if (note.body.isBlank()) {
+                            Text(
+                                text = "Empty canvas",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        } else {
+                            var lines by remember(note.body) { mutableStateOf<List<com.example.ex01.ui.editor.DrawingLine>?>(null) }
+                            LaunchedEffect(note.body) {
+                                withContext(Dispatchers.Default) {
+                                    lines = com.example.ex01.ui.editor.deserializeDrawing(note.body)
+                                }
+                            }
+                            
+                            if (lines.isNullOrEmpty()) {
+                                Text(
+                                    text = "S-Note Drawing",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            } else {
+                                val strokeColor = MaterialTheme.colorScheme.onSurface
+                                val isNightMode = strokeColor.luminance() > 0.5f // text is bright
+                                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).padding(4.dp)) {
+                                    scale(0.28f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                                        for (line in lines!!) {
+                                            if (line.text != null && line.points.isNotEmpty()) {
+                                                val uiColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified) strokeColor else line.color
+                                                val finalColor = if (isNightMode && uiColor.luminance() < 0.4f) androidx.compose.ui.graphics.Color.White else uiColor
+                                                val paint = android.graphics.Paint().apply {
+                                                    textSize = line.strokeWidth
+                                                    isAntiAlias = true
+                                                    color = android.graphics.Color.argb((finalColor.alpha * 255).toInt(), (finalColor.red * 255).toInt(), (finalColor.green * 255).toInt(), (finalColor.blue * 255).toInt())
+                                                }
+                                                drawContext.canvas.nativeCanvas.drawText(line.text, line.points.first().x, line.points.first().y - paint.fontMetrics.ascent, paint)
+                                                continue
+                                            }
+                                            
+                                            val activeLineColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified || line.color == androidx.compose.ui.graphics.Color.Black || line.color == androidx.compose.ui.graphics.Color.White) strokeColor else line.color
+                                            val finalColor = when {
+                                                line.isEraser -> androidx.compose.ui.graphics.Color.Transparent
+                                                line.isHighlighter -> activeLineColor.copy(alpha = 0.4f)
+                                                else -> activeLineColor
+                                            }
+                                            val finalBlendMode = when {
+                                                line.isEraser -> androidx.compose.ui.graphics.BlendMode.Clear
+                                                line.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
+                                                else -> androidx.compose.ui.graphics.BlendMode.SrcOver
+                                            }
+                                            
+                                            drawPath(
+                                                path = line.toPath(),
+                                                color = finalColor,
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                    width = line.strokeWidth,
+                                                    cap = if (line.isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
+                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                ),
+                                                blendMode = finalBlendMode
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     } else if (bodyStyleNote) {
                         val previewBody = notePageBody(note.body, 0).trim().replace(Regex("[\uE000-\uE009]"), "")
                         if (previewBody.isNotBlank()) {
