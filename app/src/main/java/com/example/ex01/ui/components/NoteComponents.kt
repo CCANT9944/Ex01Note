@@ -330,7 +330,7 @@ fun FolderCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NoteCard(
     note: Note,
@@ -349,117 +349,62 @@ fun NoteCard(
     val items by viewModel.getItems(note.id).collectAsStateWithLifecycle(initialValue = emptyList())
     val bodyStyleNote = note.kind == NoteKinds.FREE_TEXT && note.listStyle == NoteListStyles.CHECKLIST
     val isSNote = note.kind == NoteKinds.SNOTE
-    val targetHeight = if (isCollapsed) 64.dp else 190.dp
-    val animatedHeight by animateDpAsState(targetValue = targetHeight)
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .animateContentSize(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
-            if (isCollapsed) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(end = 24.dp, bottom = 16.dp)
-                ) {
-                    when {
-                        isSNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
-                            Icon(
-                                Icons.Default.Create,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-
-                        bodyStyleNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
-                            Icon(
-                                Icons.Default.Description,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-
-                        else -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.FormatListBulleted,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    }
-
-                    if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT || note.kind == NoteKinds.SNOTE) {
-                        Spacer(Modifier.width(8.dp))
-                    }
-
-                    Text(
-                        text = note.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                        fontWeight = FontWeight.Bold
+    val targetHeight = if (isCollapsed) 128.dp else 380.dp
+    Column(modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        ) {
+            when {
+                isSNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.Default.Create,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-            } else {
-                Column(modifier = Modifier.fillMaxSize().padding(end = 28.dp, start = 4.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        when {
-                            isSNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(28.dp)) {
-                                Icon(
-                                    Icons.Default.Create,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
-                            bodyStyleNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(28.dp)) {
-                                Icon(
-                                    Icons.Default.Description,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-
-                            else -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(28.dp)) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.FormatListBulleted,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                        }
-
-                        if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT || note.kind == NoteKinds.SNOTE) {
-                            Spacer(Modifier.width(8.dp))
-                        }
-
-                        Text(
-                            text = note.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-
+                bodyStyleNote -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.Default.Description,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                else -> Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.FormatListBulleted,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.75f),
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+            if (note.kind == NoteKinds.CHECKLIST || note.kind == NoteKinds.FREE_TEXT || note.kind == NoteKinds.SNOTE) {
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                text = note.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(targetHeight)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onMenuClick
+                ),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                Column(modifier = Modifier.fillMaxSize().padding(end = 4.dp, start = 4.dp)) {
                     if (isSNote) {
                         Text(
                             text = if (note.body.isBlank()) "Empty canvas" else "S-Note Drawing",
@@ -468,17 +413,12 @@ fun NoteCard(
                         )
                     } else if (bodyStyleNote) {
                         val previewBody = notePageBody(note.body, 0).trim()
-                        val renderedPreviewBody by produceState<AnnotatedString?>(initialValue = null, previewBody) {
-                            value = withContext(Dispatchers.Default) {
-                                renderRichTextMarkup(previewBody)
-                            }
-                        }
                         if (previewBody.isNotBlank()) {
                             Text(
-                                text = renderedPreviewBody ?: AnnotatedString(previewBody),
+                                text = AnnotatedString(previewBody),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 4,
+                                maxLines = if (isCollapsed) 4 else 10,
                                 overflow = TextOverflow.Ellipsis
                             )
                         } else {
@@ -494,7 +434,8 @@ fun NoteCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            previewItems.take(3).forEachIndexed { index, item ->
+                            val taking = if (isCollapsed) 3 else 5
+                            previewItems.take(taking).forEachIndexed { index, item ->
                                 val leadingLabel = when (note.listStyle) {
                                     NoteListStyles.BULLETED -> "•"
                                     NoteListStyles.NUMBERED -> "${index + 1}."
@@ -511,7 +452,7 @@ fun NoteCard(
                                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp)
                                 )
                             }
-                            if (previewItems.size > 3) {
+                            if (previewItems.size > taking) {
                                 Text(
                                     text = "...",
                                     style = MaterialTheme.typography.bodyLarge,
@@ -523,88 +464,9 @@ fun NoteCard(
                     }
                 }
             }
-
-            CardMenuButton(
-                isCollapsed = isCollapsed,
-                onMenuClick = onMenuClick,
-                onMenuCollapse = onMenuCollapse,
-                onMenuRename = onMenuRename,
-                onMenuExpand = onMenuExpand,
-                        onMenuChangeStyle = onMenuChangeStyle,
-                onMenuDelete = onMenuDelete,
-                onMenuMoveToFolder = onMenuMoveToFolder,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-            )
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CardMenuButton(
-    isCollapsed: Boolean,
-    modifier: Modifier = Modifier,
-    onMenuClick: () -> Unit,
-    onMenuCollapse: () -> Unit,
-    onMenuRename: () -> Unit,
-    onMenuExpand: (() -> Unit)? = null,
-    onMenuChangeStyle: (() -> Unit)? = null,
-    onMenuDelete: () -> Unit,
-    onMenuMoveToFolder: (() -> Unit)? = null,
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        IconButton(
-            onClick = { menuExpanded = true; onMenuClick() },
-            modifier = Modifier.size(28.dp)
-        ) {
-            Icon(
-                Icons.Default.MoreVert,
-                contentDescription = "Menu",
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
-        ) {
-            if (isCollapsed && onMenuExpand != null) {
-                DropdownMenuItem(text = { Text("Expand") }, onClick = {
-                    menuExpanded = false
-                    onMenuExpand()
-                })
-            } else {
-                DropdownMenuItem(text = { Text(if (isCollapsed) "Expand" else "Collapse") }, onClick = {
-                    menuExpanded = false
-                    onMenuCollapse()
-                })
-            }
-            DropdownMenuItem(text = { Text("Rename") }, onClick = {
-                menuExpanded = false
-                onMenuRename()
-            })
-            if (onMenuChangeStyle != null) {
-                DropdownMenuItem(text = { Text("Change style") }, onClick = {
-                    menuExpanded = false
-                    onMenuChangeStyle()
-                })
-            }
-            if (onMenuMoveToFolder != null) {
-                DropdownMenuItem(text = { Text("Move to folder") }, onClick = {
-                    menuExpanded = false
-                    onMenuMoveToFolder()
-                })
-            }
-            DropdownMenuItem(text = { Text("Delete") }, onClick = {
-                menuExpanded = false
-                onMenuDelete()
-            })
-        }
-    }
-}
-
 @Composable
 fun NoteItemRow(
     item: NoteItem,

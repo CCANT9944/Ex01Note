@@ -29,6 +29,7 @@ The app operates on a clean, domain-driven package structure:
 - `widget/` - Android App Widget providers and configuration screens.
 
 ## Recent Updates & Optimizations
+- **Enhanced Note Visualization & Grid Performance**: Completely redesigned the note cards in the main grid view. Card heights were doubled for better content previews, and their titles and icons were elegantly extracted to sit just above the card bounds. We also replaced the classic 3-dot dropdown menu with an intuitive touch-and-hold (long-press) interaction, harmonizing it with folder behavior. Drastically improved scrolling performance by removing heavy rich-text markdown rendering and dynamic layout animations from the lazy grid.
 - **Massive Structural Overhaul**: Reorganized the entire codebase from a flat folder structure into clean, distinct domain packages. This dramatically improves codebase navigation, separation of concerns, and maintainability.
 - **Buttery Smooth Transitions**: Completely eliminated frame drops when opening heavy Canvas (S-Note) or Free-Text notes by perfectly deferring heavy Compose rendering and string deserialization until after Jetpack Navigation slide animations finish.
 - **Resolved Import Issues**: Automated python scripts executed a full migration of flat explicit imports and switched to wildcard imports (`.*`) dynamically bridging new modules. Unit tests also updated to reflect interface changes (`getAllSNotesOnce()` mocked).

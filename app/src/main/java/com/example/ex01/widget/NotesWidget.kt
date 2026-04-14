@@ -36,7 +36,6 @@ import androidx.glance.text.FontWeight
 import androidx.glance.color.ColorProvider
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
-import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.appWidgetBackground
@@ -47,7 +46,6 @@ import androidx.glance.Image
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas

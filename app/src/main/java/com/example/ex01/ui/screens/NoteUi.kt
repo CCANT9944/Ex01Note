@@ -44,6 +44,7 @@ fun NoteGrid(
     onNotePreview: (Note) -> Unit = {},
     onNoteChangeStyle: (Note) -> Unit = {},
     onNoteDelete: (Note) -> Unit,
+    onNoteActions: (Note) -> Unit = {},
     onNoteMoveToFolder: (Note) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -93,7 +94,7 @@ fun NoteGrid(
                     note = note,
                     viewModel = viewModel,
                     onClick = { if (!isDragging) onNoteClick(note.id) },
-                    onMenuClick = {},
+                    onMenuClick = { onNoteActions(note) },
                     onMenuRename = { onNoteRename(note) },
                     onMenuExpand = { onNotePreview(note) },
                     onMenuChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else ({ onNoteChangeStyle(note) }),

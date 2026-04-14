@@ -230,6 +230,7 @@ fun MainScreen(
     var noteToChangeStyle by remember { mutableStateOf<Note?>(null) }
     var notePreview by remember { mutableStateOf<Note?>(null) }
     var noteToMove by remember { mutableStateOf<Note?>(null) }
+    var noteToActions by remember { mutableStateOf<Note?>(null) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
     var folderToMove by remember { mutableStateOf<Folder?>(null) }
     var folderToColor by remember { mutableStateOf<Folder?>(null) }
@@ -400,7 +401,7 @@ fun MainScreen(
                             note = note,
                             viewModel = viewModel,
                             onClick = { if (!isDragging) onNoteClick(note.id) },
-                            onMenuClick = {},
+                            onMenuClick = { noteToActions = note },
                             onMenuRename = { noteToRename = note },
                             onMenuExpand = { notePreview = note },
                             onMenuChangeStyle = { noteToChangeStyle = note },
@@ -459,7 +460,7 @@ fun MainScreen(
                             note = note,
                             viewModel = viewModel,
                             onClick = { if (!isDragging) onNoteClick(note.id) },
-                            onMenuClick = {},
+                            onMenuClick = { noteToActions = note },
                             onMenuRename = { noteToRename = note },
                             onMenuExpand = { notePreview = note },
                             onMenuChangeStyle = null,
@@ -518,6 +519,30 @@ fun MainScreen(
                 onDismissRequest = { folderToActions = null }
             )
         }
+
+        noteToActions?.let { note ->
+            NoteActionsDialog(
+                note = note,
+                onRename = {
+                    noteToRename = note
+                    noteToActions = null
+                },
+                onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
+                    noteToChangeStyle = note
+                    noteToActions = null
+                } },
+                onMoveToFolder = {
+                    noteToMove = note
+                    noteToActions = null
+                },
+                onDelete = {
+                    noteToDelete = note
+                    noteToActions = null
+                },
+                onDismissRequest = { noteToActions = null }
+            )
+        }
+
 
 
         CreateItemDialogs(
@@ -694,6 +719,7 @@ fun FolderDetailScreen(
     val notes by viewModel.getNotesByFolder(folderId).collectAsStateWithLifecycle(initialValue = emptyList())
     val folderBounds = remember { mutableStateMapOf<Int, androidx.compose.ui.geometry.Rect>() }
     val collapsedFoldersRepo = remember(context) { CollapsedFoldersRepository(context) }
+    val collapsedNotesRepo = remember(context) { CollapsedNotesRepository(context) }
     val scope = rememberCoroutineScope()
     var showCreateChooser by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
@@ -705,6 +731,7 @@ fun FolderDetailScreen(
     var noteToChangeStyle by remember { mutableStateOf<Note?>(null) }
     var notePreview by remember { mutableStateOf<Note?>(null) }
     var noteToMove by remember { mutableStateOf<Note?>(null) }
+    var noteToActions by remember { mutableStateOf<Note?>(null) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
     var folderToMove by remember { mutableStateOf<Folder?>(null) }
@@ -831,6 +858,7 @@ fun FolderDetailScreen(
                     onNoteChangeStyle = { noteToChangeStyle = it },
                     onNoteDelete = { noteToDelete = it },
                     onNoteMoveToFolder = { noteToMove = it },
+                    onNoteActions = { noteToActions = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -879,6 +907,30 @@ fun FolderDetailScreen(
                 onDismissRequest = { folderToActions = null }
             )
         }
+
+        noteToActions?.let { note ->
+            NoteActionsDialog(
+                note = note,
+                onRename = {
+                    noteToRename = note
+                    noteToActions = null
+                },
+                onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
+                    noteToChangeStyle = note
+                    noteToActions = null
+                } },
+                onMoveToFolder = {
+                    noteToMove = note
+                    noteToActions = null
+                },
+                onDelete = {
+                    noteToDelete = note
+                    noteToActions = null
+                },
+                onDismissRequest = { noteToActions = null }
+            )
+        }
+
 
         CreateItemDialogs(
             showFolderDialog = showFolderDialog,
