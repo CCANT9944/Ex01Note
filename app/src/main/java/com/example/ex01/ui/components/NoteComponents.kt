@@ -412,13 +412,13 @@ fun NoteCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
                     } else if (bodyStyleNote) {
-                        val previewBody = notePageBody(note.body, 0).trim()
+                        val previewBody = notePageBody(note.body, 0).trim().replace(Regex("[\uE000-\uE009]"), "")
                         if (previewBody.isNotBlank()) {
                             Text(
                                 text = AnnotatedString(previewBody),
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = if (isCollapsed) 4 else 10,
+                                maxLines = if (isCollapsed) 6 else 12,
                                 overflow = TextOverflow.Ellipsis
                             )
                         } else {
@@ -434,7 +434,7 @@ fun NoteCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            val taking = if (isCollapsed) 3 else 5
+                            val taking = if (isCollapsed) 5 else 8
                             previewItems.take(taking).forEachIndexed { index, item ->
                                 val leadingLabel = when (note.listStyle) {
                                     NoteListStyles.BULLETED -> "•"
@@ -449,15 +449,14 @@ fun NoteCard(
                                     showCheckbox = false,
                                     leadingLabel = leadingLabel,
                                     compact = true,
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp)
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp)
                                 )
                             }
                             if (previewItems.size > taking) {
                                 Text(
                                     text = "...",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(start = 12.dp),
-                                    fontSize = 17.sp
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                                    modifier = Modifier.padding(start = 12.dp)
                                 )
                             }
                         }
@@ -501,7 +500,7 @@ fun NoteItemRow(
             )
         }
         Text(
-            text = item.text,
+            text = item.text.replace(Regex("[\uE000-\uE009]"), ""),
             modifier = Modifier
                 .weight(1f)
                 .padding(start = if (showCheckbox) 4.dp else 0.dp),

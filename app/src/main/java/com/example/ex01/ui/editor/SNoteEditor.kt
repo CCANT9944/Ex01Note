@@ -697,6 +697,9 @@ fun SNoteEditor(
                                                 if (isTextMode) {
                                                     change.consume()
                                                     val tapPos = change.position
+
+                                                    commitActiveText()
+
                                                     var hitIndex = -1
                                                     for (i in drawingLines.indices.reversed()) {
                                                         val l = drawingLines[i]
@@ -724,7 +727,6 @@ fun SNoteEditor(
                                                         }
                                                     }
 
-                                                    commitActiveText()
                                                     if (hitIndex != -1) {
                                                         val hitLine = drawingLines.removeAt(hitIndex)
                                                         updatePenColor(hitLine.color.value.toLong())
