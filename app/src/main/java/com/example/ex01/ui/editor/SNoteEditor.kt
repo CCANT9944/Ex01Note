@@ -953,15 +953,15 @@ fun SNoteEditor(
                         if (activeTextInputPosition != null) {
                             val cVal = Color(currentColorValue.toULong())
                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
-                                BasicTextField(
-                                    value = activeTextValue,
-                                    onValueChange = {
-                                        activeTextValue = it
-                                    },
-                                    modifier = Modifier
-                                        .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
-                                        .focusRequester(focusRequester)
-                                        .background(Color.Transparent),
+                            BasicTextField(
+                                value = activeTextValue,
+                                onValueChange = {
+                                    activeTextValue = it
+                                },
+                                modifier = Modifier
+                                    .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
+                                    .focusRequester(focusRequester)
+                                    .background(Color.Transparent),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                                     autoCorrectEnabled = false
                                 ),
