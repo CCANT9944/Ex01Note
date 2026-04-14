@@ -62,6 +62,7 @@ class NotesWidgetConfigActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     private fun saveSelectionAndFinish(noteId: Int, snoteId: Int) {
         val prefs = getSharedPreferences("notes_widget_prefs", MODE_PRIVATE)
         prefs.edit {
