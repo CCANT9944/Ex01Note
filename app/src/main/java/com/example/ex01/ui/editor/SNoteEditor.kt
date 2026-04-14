@@ -297,6 +297,9 @@ fun SNoteEditor(
 
     var initialLoadDone by remember { mutableStateOf(false) }
 
+    var originalHitLine by remember { mutableStateOf<DrawingLine?>(null) }
+    var originalHitIndex by remember { mutableIntStateOf(-1) }
+
     LaunchedEffect(serializedBody, pageHeightPx) {
         if (!initialLoadDone && pageHeightPx > 0f) {
             initialLoadDone = true
@@ -339,22 +342,26 @@ fun SNoteEditor(
     }
 
     val commitActiveText = {
-        if (activeTextInputPosition != null && activeTextValue.text.isNotBlank()) {
-            val cVal = Color(currentColorValue.toULong())
-            val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-            drawingLines.add(
-                DrawingLine(
-                    points = listOf(activeTextInputPosition!!),
-                    color = chosenColor,
-                    strokeWidth = currentTextSize,
-                    text = activeTextValue.text
+        if (activeTextInputPosition != null) {
+            if (activeTextValue.text.isNotBlank()) {
+                val cVal = Color(currentColorValue.toULong())
+                val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
+                drawingLines.add(
+                    DrawingLine(
+                        points = listOf(activeTextInputPosition!!),
+                        color = chosenColor,
+                        strokeWidth = currentTextSize,
+                        text = activeTextValue.text
+                    )
                 )
-            )
-            undoneLines.clear()
+                undoneLines.clear()
+            }
+            originalHitLine = null
+            originalHitIndex = -1
+            activeTextInputPosition = null
+            activeTextValue = TextFieldValue("")
+            commitChanges()
         }
-        activeTextInputPosition = null
-        activeTextValue = TextFieldValue("")
-        commitChanges()
     }
 
     val splitTextForNewStyle = {
@@ -643,14 +650,24 @@ fun SNoteEditor(
 
                     IconButton(
                         onClick = {
-                            commitActiveText()
-                            if (drawingLines.isNotEmpty()) {
+                            if (activeTextInputPosition != null) {
+                                // Cancel text editing and restore original hit line
+                                activeTextInputPosition = null
+                                activeTextValue = TextFieldValue("")
+                                if (originalHitLine != null) {
+                                    val index = if (originalHitIndex in 0..drawingLines.size) originalHitIndex else drawingLines.size
+                                    drawingLines.add(index, originalHitLine!!)
+                                    originalHitLine = null
+                                    originalHitIndex = -1
+                                }
+                                commitChanges()
+                            } else if (drawingLines.isNotEmpty()) {
                                 undoneLines.add(drawingLines.removeAt(drawingLines.size - 1))
                                 commitChanges()
                             }
                         },
                         modifier = Modifier.size(38.dp),
-                        enabled = drawingLines.isNotEmpty()
+                        enabled = drawingLines.isNotEmpty() || activeTextInputPosition != null
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo", modifier = Modifier.size(20.dp))
                     }
@@ -789,6 +806,8 @@ fun SNoteEditor(
 
                                                     if (hitIndex != -1) {
                                                         val hitLine = drawingLines.removeAt(hitIndex)
+                                                        originalHitLine = hitLine
+                                                        originalHitIndex = hitIndex
                                                         updatePenColor(hitLine.color.value.toLong())
                                                         activeTextInputPosition = hitLine.points.first()
                                                         val py = hitLine.points.first().y
