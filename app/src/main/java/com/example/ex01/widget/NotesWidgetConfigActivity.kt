@@ -1,5 +1,15 @@
 package com.example.ex01.widget
 
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
+
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Intent
@@ -17,8 +27,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.GlanceAppWidgetManager
-import com.example.ex01.Note
-import com.example.ex01.NoteDatabase
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

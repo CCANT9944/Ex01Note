@@ -1,4 +1,14 @@
-package com.example.ex01
+package com.example.ex01.ui.screens
+
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -102,8 +112,6 @@ import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
 import android.appwidget.AppWidgetManager
 import androidx.glance.appwidget.updateAll
-import com.example.ex01.widget.NotesWidget
-import com.example.ex01.widget.NotesWidgetReceiver
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

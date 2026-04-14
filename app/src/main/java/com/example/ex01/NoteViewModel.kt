@@ -1,11 +1,20 @@
 package com.example.ex01
 
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.ex01.widget.NotesWidget
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch

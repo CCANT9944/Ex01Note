@@ -1,5 +1,15 @@
 package com.example.ex01
 
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -73,10 +83,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.navigation.navArgument
-import com.example.ex01.ui.theme.Ex01Theme
-import com.example.ex01.ui.theme.ThemeMode
-import com.example.ex01.ui.theme.ThemeSettingsRepository
-import com.example.ex01.NoteWritingToolbar
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.firstOrNull
 

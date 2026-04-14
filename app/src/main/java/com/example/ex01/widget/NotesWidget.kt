@@ -1,5 +1,15 @@
 package com.example.ex01.widget
 
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
+
 import android.content.Context
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,10 +56,6 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.content.res.Configuration
 import androidx.glance.appwidget.action.actionStartActivity
-import com.example.ex01.Note
-import com.example.ex01.NoteDatabase
-import com.example.ex01.NoteItem
-import com.example.ex01.deserializeDrawing
 
 class NotesWidget : GlanceAppWidget() {
 

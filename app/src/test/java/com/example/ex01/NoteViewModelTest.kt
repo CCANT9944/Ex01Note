@@ -1,5 +1,15 @@
 package com.example.ex01
 
+import com.example.ex01.*
+import com.example.ex01.data.*
+import com.example.ex01.ui.screens.*
+import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.dialogs.*
+import com.example.ex01.ui.components.*
+import com.example.ex01.ui.theme.*
+import com.example.ex01.widget.*
+
+
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -30,6 +40,7 @@ class FakeNoteDao : NoteDao {
 
     override fun getAllNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { !it.isDeleted }) }
     override suspend fun getAllNotesOnce(): List<Note> = notesList.filter { !it.isDeleted }
+    override suspend fun getAllSNotesOnce(): List<Note> = notesList.filter { !it.isDeleted }
     override fun getNotesByFolder(folderId: Int) = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == folderId && !it.isDeleted }) }
     override fun getUnfolderedNotes() = kotlinx.coroutines.flow.flow { emit(notesList.filter { it.folderId == null && !it.isDeleted }) }
     override fun getNoteById(id: Int) = kotlinx.coroutines.flow.flow { emit(notesList.firstOrNull { it.id == id }) }
