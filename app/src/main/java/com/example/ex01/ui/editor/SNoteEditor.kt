@@ -1,14 +1,5 @@
 package com.example.ex01.ui.editor
 
-import com.example.ex01.*
-import com.example.ex01.data.*
-import com.example.ex01.ui.screens.*
-import com.example.ex01.ui.editor.*
-import com.example.ex01.ui.dialogs.*
-import com.example.ex01.ui.components.*
-import com.example.ex01.ui.theme.*
-import com.example.ex01.widget.*
-
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -20,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material3.*
@@ -720,7 +710,6 @@ fun SNoteEditor(
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val availableHeight = this.maxHeight
                 val density = LocalDensity.current
-                val maxWidthPx = constraints.maxWidth.toFloat()
 
                 LaunchedEffect(availableHeight) {
                     if (pageHeightDp == 0.dp) {
