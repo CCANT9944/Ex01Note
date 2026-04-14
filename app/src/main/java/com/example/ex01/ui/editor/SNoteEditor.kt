@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.zIndex
@@ -71,7 +72,6 @@ private const val HIGHLIGHTER_THIN = 15f
 private const val HIGHLIGHTER_MEDIUM = 30f
 private const val HIGHLIGHTER_THICK = 50f
 
-private const val TEXT_SMALL = 24f
 private const val TEXT_MEDIUM = 40f
 private const val TEXT_LARGE = 64f
 
@@ -215,6 +215,36 @@ private val TextIcon: ImageVector
         }
     }.build()
 
+private val HighlighterIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Highlighter",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
+            moveTo(17.75f, 7.0f)
+            lineTo(14.0f, 3.25f)
+            lineTo(15.4f, 1.85f)
+            curveTo(15.79f, 1.46f, 16.42f, 1.46f, 16.81f, 1.85f)
+            lineTo(19.15f, 4.19f)
+            curveTo(19.54f, 4.58f, 19.54f, 5.21f, 19.15f, 5.6f)
+            lineTo(17.75f, 7.0f)
+            moveTo(12.6f, 8.4f)
+            lineTo(16.35f, 12.15f)
+            lineTo(7.15f, 21.35f)
+            lineTo(3.4f, 17.6f)
+            lineTo(12.6f, 8.4f)
+            moveTo(2.0f, 21.2f)
+            horizontalLineTo(22.0f)
+            verticalLineTo(23.2f)
+            horizontalLineTo(2.0f)
+            verticalLineTo(21.2f)
+            close()
+        }
+    }.build()
+
 @Composable
 fun SNoteEditor(
     serializedBody: String,
@@ -275,16 +305,21 @@ fun SNoteEditor(
     var pageHeightPx by remember { mutableFloatStateOf(0f) }
     var pageHeightDp by remember { mutableStateOf(0.dp) }
 
+    var initialLoadDone by remember { mutableStateOf(false) }
+
     LaunchedEffect(serializedBody, pageHeightPx) {
-        if (drawingLines.isEmpty() && serializedBody.isNotBlank() && currentPath == null && pageHeightPx > 0f) {
-            val lines = withContext(Dispatchers.Default) {
-                deserializeDrawing(serializedBody)
-            }
-            drawingLines.addAll(lines)
-            val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
-            if (maxY > 0) {
-                val neededPages = kotlin.math.ceil((maxY / pageHeightPx).toDouble()).toInt()
-                if (neededPages > pageCount) pageCount = neededPages
+        if (!initialLoadDone && pageHeightPx > 0f) {
+            initialLoadDone = true
+            if (serializedBody.isNotBlank()) {
+                val lines = withContext(Dispatchers.Default) {
+                    deserializeDrawing(serializedBody)
+                }
+                drawingLines.addAll(lines)
+                val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
+                if (maxY > 0) {
+                    val neededPages = kotlin.math.ceil((maxY / pageHeightPx).toDouble()).toInt()
+                    if (neededPages > pageCount) pageCount = neededPages
+                }
             }
         }
     }
@@ -306,6 +341,13 @@ fun SNoteEditor(
         onSerializedBodyChange(serializeDrawing(linesToSave))
     }
 
+    val currentCommitChanges by rememberUpdatedState(commitChanges)
+    DisposableEffect(Unit) {
+        onDispose {
+            currentCommitChanges()
+        }
+    }
+
     val commitActiveText = {
         if (activeTextInputPosition != null && activeTextValue.text.isNotBlank()) {
             val cVal = Color(currentColorValue.toULong())
@@ -325,6 +367,29 @@ fun SNoteEditor(
         commitChanges()
     }
 
+    val splitTextForNewStyle = {
+        if (activeTextInputPosition != null && activeTextValue.text.isNotBlank()) {
+            val oldPos = activeTextInputPosition!!
+            val oldText = activeTextValue.text
+
+            val cleanText = oldText.trimEnd('\n', '\r')
+            if (cleanText.isNotBlank()) {
+                activeTextValue = TextFieldValue(cleanText)
+                commitActiveText() // Saves current text with old size permanently to the canvas
+
+                // Determine how many lines down to shift the new box so it seamlessly follows the old text
+                val rowHeight = TEXT_LARGE * 1.2f
+                val trailingNewlines = oldText.length - cleanText.length
+                val actualLines = cleanText.count { it == '\n' } + 1
+                val totalShift = actualLines + trailingNewlines
+
+                activeTextInputPosition = Offset(oldPos.x, oldPos.y + (rowHeight * totalShift))
+                activeTextValue = TextFieldValue("")
+                commitChanges()
+            }
+        }
+    }
+
     val strokeColor = MaterialTheme.colorScheme.onSurface
     val eraserColor = MaterialTheme.colorScheme.surface
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -338,7 +403,7 @@ fun SNoteEditor(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp, horizontal = 8.dp),
+                    .padding(vertical = 2.dp, horizontal = 4.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
                 // Scrollable Tools Group
@@ -346,7 +411,7 @@ fun SNoteEditor(
                     modifier = Modifier
                         .weight(1f)
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     Box {
@@ -361,11 +426,12 @@ fun SNoteEditor(
                                     isTextMode = false
                                 }
                             },
+                            modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
                                 containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
                         ) {
-                            Icon(Icons.Default.Create, contentDescription = "Pen")
+                            Icon(Icons.Default.Create, contentDescription = "Pen", modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(
                             expanded = showThicknessMenu,
@@ -374,7 +440,7 @@ fun SNoteEditor(
                         ) {
                             listOf(PEN_THIN, PEN_MEDIUM, PEN_THICK).forEach { thickness ->
                                 DropdownMenuItem(
-                                    modifier = if (currentThickness == thickness) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    modifier = if (currentThickness == thickness) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
                                     contentPadding = PaddingValues(horizontal = 4.dp), // Tiny padding
                                     text = {
                                         Box(
@@ -409,11 +475,12 @@ fun SNoteEditor(
                                     isTextMode = false
                                 }
                             },
+                            modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
                                 containerColor = if (isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
                         ) {
-                            Icon(EraserIcon, contentDescription = "Eraser")
+                            Icon(EraserIcon, contentDescription = "Eraser", modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(
                             expanded = showEraserThicknessMenu,
@@ -423,7 +490,7 @@ fun SNoteEditor(
                             val eraserVisualColor = strokeColor.copy(alpha = 0.3f)
                             listOf(ERASER_THIN, ERASER_MEDIUM, ERASER_THICK).forEach { thickness ->
                                 DropdownMenuItem(
-                                    modifier = if (currentEraserThickness == thickness) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    modifier = if (currentEraserThickness == thickness) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
                                     contentPadding = PaddingValues(horizontal = 4.dp), // Tiny padding
                                     text = {
                                         Box(
@@ -459,11 +526,12 @@ fun SNoteEditor(
                                     isTextMode = false
                                 }
                             },
+                            modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
                                 containerColor = if (isHighlighterMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
                         ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Highlighter")
+                            Icon(HighlighterIcon, contentDescription = "Highlighter", modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(
                             expanded = showHighlighterThicknessMenu,
@@ -472,7 +540,7 @@ fun SNoteEditor(
                         ) {
                             listOf(HIGHLIGHTER_THIN, HIGHLIGHTER_MEDIUM, HIGHLIGHTER_THICK).forEach { thickness ->
                                 DropdownMenuItem(
-                                    modifier = if (currentHighlighterThickness == thickness) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    modifier = if (currentHighlighterThickness == thickness) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
                                     contentPadding = PaddingValues(horizontal = 4.dp), // Tiny padding
                                     text = {
                                         Box(
@@ -500,43 +568,48 @@ fun SNoteEditor(
                     Box {
                         IconButton(
                             onClick = {
-                                commitActiveText()
                                 if (isTextMode) {
                                     showTextSizeMenu = true
                                 } else {
+                                    commitActiveText()
                                     isTextMode = true
                                     isHighlighterMode = false
                                     isEraserMode = false
                                 }
                             },
+                            modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
                                 containerColor = if (isTextMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
                         ) {
-                            Icon(TextIcon, contentDescription = "Text")
+                            Icon(TextIcon, contentDescription = "Text", modifier = Modifier.size(20.dp))
                         }
                         DropdownMenu(
                             expanded = showTextSizeMenu,
                             onDismissRequest = { showTextSizeMenu = false },
                             modifier = Modifier.width(60.dp)
                         ) {
-                            listOf("S" to TEXT_SMALL, "M" to TEXT_MEDIUM, "L" to TEXT_LARGE).forEach { (label, size) ->
+                            listOf("40" to TEXT_MEDIUM, "64" to TEXT_LARGE).forEach { (label, size) ->
                                 DropdownMenuItem(
-                                    modifier = if (currentTextSize == size) Modifier.background(MaterialTheme.colorScheme.surfaceVariant) else Modifier,
+                                    modifier = if (currentTextSize == size) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
                                     text = {
                                         Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                     },
                                     contentPadding = PaddingValues(horizontal = 4.dp),
-                                    onClick = { updateTextSize(size); showTextSizeMenu = false }
+                                    onClick = {
+                                        splitTextForNewStyle()
+                                        updateTextSize(size)
+                                        showTextSizeMenu = false
+                                    }
                                 )
                             }
                         }
                     }
 
                     Box {
-                        IconButton(onClick = { showColorMenu = true }) {
+                        IconButton(onClick = { showColorMenu = true }, modifier = Modifier.size(38.dp)) {
                             Box(modifier = Modifier
-                                .size(24.dp)
+                                .size(20.dp)
                                 .background(if (currentColorValue == Color.Unspecified.value.toLong()) strokeColor else Color(currentColorValue.toULong()), shape = CircleShape)
                                 .border(1.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
                             )
@@ -549,6 +622,7 @@ fun SNoteEditor(
                             val penColors = listOf(Color.Unspecified) + ALLOWED_PEN_COLORS
                             penColors.forEach { c ->
                                 DropdownMenuItem(
+                                    modifier = if (currentColorValue == c.value.toLong()) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
                                     contentPadding = PaddingValues(horizontal = 4.dp),
                                     text = {
                                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -560,6 +634,7 @@ fun SNoteEditor(
                                         }
                                     },
                                     onClick = {
+                                        splitTextForNewStyle()
                                         updatePenColor(c.value.toLong())
                                         showColorMenu = false
                                     }
@@ -571,7 +646,7 @@ fun SNoteEditor(
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
-                            .height(24.dp)
+                            .height(20.dp)
                             .width(1.dp)
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     )
@@ -584,9 +659,10 @@ fun SNoteEditor(
                                 commitChanges()
                             }
                         },
+                        modifier = Modifier.size(38.dp),
                         enabled = drawingLines.isNotEmpty()
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo", modifier = Modifier.size(20.dp))
                     }
 
                     IconButton(
@@ -597,9 +673,10 @@ fun SNoteEditor(
                                 commitChanges()
                             }
                         },
+                        modifier = Modifier.size(38.dp),
                         enabled = undoneLines.isNotEmpty()
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo", modifier = Modifier.size(20.dp))
                     }
                 } // Close Scrollable Row
 
@@ -610,11 +687,11 @@ fun SNoteEditor(
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
-                            .height(24.dp)
+                            .height(20.dp)
                             .width(1.dp)
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     TextButton(
                         onClick = {
                             commitActiveText()
@@ -622,9 +699,10 @@ fun SNoteEditor(
                                 showClearWarning = true
                             }
                         },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("Clear All")
+                        Text("Clear All", fontSize = 14.sp)
                     }
                 }
             } // Close Outer Row
@@ -700,27 +778,20 @@ fun SNoteEditor(
 
                                                     commitActiveText()
 
+                                                    val rowHeight = TEXT_LARGE * 1.2f
+                                                    val clickedRowIndex = (tapPos.y / rowHeight).toInt()
+                                                    val targetY = clickedRowIndex * rowHeight
+
                                                     var hitIndex = -1
                                                     for (i in drawingLines.indices.reversed()) {
                                                         val l = drawingLines[i]
                                                         if (l.text != null && l.points.isNotEmpty()) {
-                                                            val px = l.points.first().x
                                                             val py = l.points.first().y
-                                                            val maxTargetW = (maxWidthPx - px - with(density) { 16.dp.toPx() }).coerceAtLeast(10f)
-                                                            val p = android.graphics.Paint().apply { textSize = l.strokeWidth }
-                                                            
-                                                            val linesText = l.text.split("\n")
-                                                            var estimatedLines = 0
-                                                            var w = 0f
-                                                            for (t in linesText) {
-                                                                val tw = p.measureText(t)
-                                                                w = kotlin.math.max(w, kotlin.math.min(tw, maxTargetW))
-                                                                estimatedLines += kotlin.math.ceil(tw / maxTargetW).toInt().coerceAtLeast(1)
-                                                            }
-                                                            val h = l.strokeWidth * estimatedLines * 1.2f
+                                                            val startRow = kotlin.math.round(py / rowHeight).toInt()
+                                                            val numRows = l.text.split("\n").size
+                                                            val endRow = startRow + numRows - 1
 
-                                                            // Provide a generous touch target for the text box
-                                                            if (tapPos.x in (px - 50f)..(px + w + 70f) && tapPos.y in (py - 50f)..(py + h + 80f)) {
+                                                            if (clickedRowIndex in startRow..endRow) {
                                                                 hitIndex = i
                                                                 break
                                                             }
@@ -731,36 +802,48 @@ fun SNoteEditor(
                                                         val hitLine = drawingLines.removeAt(hitIndex)
                                                         updatePenColor(hitLine.color.value.toLong())
                                                         activeTextInputPosition = hitLine.points.first()
+                                                        val py = hitLine.points.first().y
+                                                        val startRow = kotlin.math.round(py / rowHeight).toInt()
                                                         val safeText = hitLine.text!! // Keep original newlines
+
+                                                        val lines = safeText.split("\n")
+                                                        val targetLineIndex = (clickedRowIndex - startRow).coerceIn(0, lines.size - 1)
+
+                                                        var charIdxOff = 0
+                                                        for (i in 0 until targetLineIndex) {
+                                                            charIdxOff += lines[i].length + 1 // +1 for '\n'
+                                                        }
+
+                                                        val targetLineText = lines[targetLineIndex]
                                                         val p = android.graphics.Paint().apply { textSize = hitLine.strokeWidth }
-                                                        val widths = FloatArray(safeText.length)
-                                                        p.getTextWidths(safeText, widths)
+                                                        val widths = FloatArray(targetLineText.length)
+                                                        p.getTextWidths(targetLineText, widths)
+
                                                         val tapDX = tapPos.x - hitLine.points.first().x
                                                         var curX = 0f
-                                                        var charIdx = safeText.length
-                                                        for (charI in widths.indices) {
-                                                            if (safeText[charI] == '\n') continue // skip measurement for newline char
-                                                            if (tapDX < curX + widths[charI] / 2f) {
-                                                                charIdx = charI
+                                                        var charIdxInLine = targetLineText.length
+                                                        for (i in widths.indices) {
+                                                            if (tapDX < curX + widths[i] / 2f) {
+                                                                charIdxInLine = i
                                                                 break
                                                             }
-                                                            curX += widths[charI]
+                                                            curX += widths[i]
                                                         }
-                                                        activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(charIdx))
+
+                                                        if (tapDX < 0) {
+                                                            charIdxInLine = 0
+                                                        } else if (tapDX > curX + 20f) {
+                                                            charIdxInLine = targetLineText.length
+                                                        }
+
+                                                        val finalCharIdx = charIdxOff + charIdxInLine
+
+                                                        activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
                                                         currentTextSize = hitLine.strokeWidth
                                                         commitChanges()
                                                     } else {
-                                                        var targetY = tapPos.y - currentTextSize / 2f
-                                                        for (l in drawingLines) {
-                                                            if (l.text != null && l.points.isNotEmpty()) {
-                                                                val py = l.points.first().y
-                                                                if (kotlin.math.abs(targetY - py) < l.strokeWidth) {
-                                                                    targetY = py
-                                                                    break
-                                                                }
-                                                            }
-                                                        }
-                                                        activeTextInputPosition = Offset(tapPos.x, targetY)
+                                                        val defaultIndent = with(density) { 16.dp.toPx() }
+                                                        activeTextInputPosition = Offset(defaultIndent, targetY)
                                                         activeTextValue = TextFieldValue("")
                                                         commitChanges()
                                                     }
@@ -856,15 +939,23 @@ fun SNoteEditor(
                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
                                 Text(
                                     text = line.text,
+                                    softWrap = false,
                                     style = androidx.compose.ui.text.TextStyle(
                                         color = activeLineColor,
-                                        fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() }
+                                        fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() },
+                                        lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
+                                        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                            alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                            trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                        ),
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                            includeFontPadding = false
+                                        )
                                     ),
                                     modifier = Modifier
                                         .offset {
-                                            IntOffset(line.points.first().x.toInt(), line.points.first().y.toInt())
+                                            IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
                                         }
-                                        .widthIn(max = with(LocalDensity.current) { (maxWidthPx - line.points.first().x).toDp() - 16.dp })
                                 )
                             }
                         }
@@ -873,22 +964,36 @@ fun SNoteEditor(
                         if (activeTextInputPosition != null) {
                             val cVal = Color(currentColorValue.toULong())
                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
-                            BasicTextField(
-                                value = activeTextValue,
-                                onValueChange = {
-                                    activeTextValue = it
-                                    commitChanges()
-                                },
-                                modifier = Modifier
-                                    .offset { IntOffset(activeTextInputPosition!!.x.toInt(), activeTextInputPosition!!.y.toInt()) }
-                                    .widthIn(max = with(density) { (maxWidthPx - activeTextInputPosition!!.x).toDp() - 16.dp })
-                                    .focusRequester(focusRequester)
-                                    .background(Color.Transparent),
+                                BasicTextField(
+                                    value = activeTextValue,
+                                    onValueChange = {
+                                        activeTextValue = it
+                                    },
+                                    modifier = Modifier
+                                        .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
+                                        .focusRequester(focusRequester)
+                                        .background(Color.Transparent),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    autoCorrectEnabled = false
+                                ),
                                 textStyle = androidx.compose.ui.text.TextStyle(
                                     color = chosenColor,
-                                    fontSize = with(LocalDensity.current) { currentTextSize.toSp() }
-                                )
+                                    fontSize = with(LocalDensity.current) { currentTextSize.toSp() },
+                                    lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
+                                    lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                        alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                        trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                    ),
+                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                        includeFontPadding = false
+                                    )
+                                ),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
                             )
+                            LaunchedEffect(activeTextValue.text) {
+                                kotlinx.coroutines.delay(400)
+                                commitChanges()
+                            }
                             LaunchedEffect(activeTextInputPosition) {
                                 kotlinx.coroutines.delay(50)
                                 try {

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -431,7 +432,7 @@ fun NoteCard(
                             } else {
                                 val strokeColor = MaterialTheme.colorScheme.onSurface
                                 val isNightMode = strokeColor.luminance() > 0.5f // text is bright
-                                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).padding(4.dp)) {
+                                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).padding(4.dp).graphicsLayer(alpha = 0.99f)) {
                                     scale(0.28f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                                         for (line in lines!!) {
                                             if (line.text != null && line.points.isNotEmpty()) {
