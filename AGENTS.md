@@ -21,9 +21,11 @@
   - Implement strict Diff-verification (`updatedNote != currentNote`) before committing to the Room databases. This prevents massive Flow invalidation spikes and IPC App Widget redraws when backing out without edits.
   - SNote tool edits are instantly serialized and continuously committed to the database on keystrokes using smooth debounced background auto-saves. Always use `DisposableEffect` to catch back-button exits without lag.
 - **UI & Grid Performance:**
-  - Do not use heavy rich-text markdown rendering and dynamic layout animations from the lazy grid, keep note previews lightweight.
-  - Parse heavy drawing paths in a background `Dispatchers.Default` coroutine, then cleanly scale down and paint through pure, hardware-accelerated Compose Canvas directly onto the note card layout.
-  - SNote Text nodes must be rendered via native Compose Layout constraints to guarantee fluid word-wrapping.
+  - **Grid Navigation:** Use touch-and-hold (long-press) context interactions rather than 3-dot dropdown menus for grid items.
+  - **Previews:** Do not use heavy rich-text markdown rendering and dynamic layout animations from the lazy grid, keep note previews lightweight. Strip internal RichText PUA markers (`\uE000`-`\uE009`) from previews to prevent fallback font rendering issues.
+  - **Canvas Previews:** Parse heavy drawing paths in a background `Dispatchers.Default` coroutine, then cleanly scale down and paint through pure, hardware-accelerated Compose Canvas directly onto the note card layout.
+  - **Canvas Text & Hit Testing:** SNote Text nodes must be rendered via native Compose Layout constraints to guarantee fluid word-wrapping. The hit-detection engine strictly calculates exact visual rows instead of hard newlines to perfectly anchor the cursor. Row heights should strictly tie to a mathematical grid based on the maximum font size (e.g., `TEXT_LARGE * 1.2f`).
+  - **Text Styling:** Text styles (color, size) must apply uniformly to the active text block natively without prematurely splitting chunks.
 - **Imports:** Rely on wildcard imports (`.*`) dynamically bridging new modules, particularly when interacting with python scripts that automate flat explicit imports.
 
 ## Scripts & Tooling
