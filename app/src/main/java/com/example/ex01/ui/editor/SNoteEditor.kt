@@ -115,6 +115,35 @@ fun SNoteEditor(
 
     val commitChanges = {
         val linesToSave = drawingLines.toList().toMutableList()
+        if (selectedLines.isNotEmpty()) {
+            var minX = Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxX = Float.MIN_VALUE
+            var maxY = Float.MIN_VALUE
+            selectedLines.forEach { l ->
+                l.points.forEach { pt ->
+                    if (pt.x < minX) minX = pt.x
+                    if (pt.y < minY) minY = pt.y
+                    if (pt.x > maxX) maxX = pt.x
+                    if (pt.y > maxY) maxY = pt.y
+                }
+            }
+            val cX = (minX + maxX) / 2f
+            val cY = (minY + maxY) / 2f
+
+            val finalizedLines = selectedLines.map { l ->
+                l.copy(
+                    points = l.points.map { p ->
+                        Offset(
+                            cX + (p.x - cX) * selectionScale + selectionDragOffset.x,
+                            cY + (p.y - cY) * selectionScale + selectionDragOffset.y
+                        )
+                    },
+                    strokeWidth = l.strokeWidth * selectionScale
+                )
+            }
+            linesToSave.addAll(finalizedLines)
+        }
         if (activeTextInputPosition != null && activeTextValue.text.isNotEmpty()) {
             val cVal = Color(currentColorValue.toULong())
             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
@@ -130,6 +159,42 @@ fun SNoteEditor(
         onSerializedBodyChange(serializeDrawing(linesToSave))
     }
 
+    val commitLassoSelection = {
+        if (selectedLines.isNotEmpty()) {
+            var minX = Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxX = Float.MIN_VALUE
+            var maxY = Float.MIN_VALUE
+            selectedLines.forEach { l ->
+                l.points.forEach { pt ->
+                    if (pt.x < minX) minX = pt.x
+                    if (pt.y < minY) minY = pt.y
+                    if (pt.x > maxX) maxX = pt.x
+                    if (pt.y > maxY) maxY = pt.y
+                }
+            }
+            val cX = (minX + maxX) / 2f
+            val cY = (minY + maxY) / 2f
+
+            val finalizedLines = selectedLines.map { l ->
+                l.copy(
+                    points = l.points.map { p ->
+                        Offset(
+                            cX + (p.x - cX) * selectionScale + selectionDragOffset.x,
+                            cY + (p.y - cY) * selectionScale + selectionDragOffset.y
+                        )
+                    },
+                    strokeWidth = l.strokeWidth * selectionScale
+                )
+            }
+            drawingLines.addAll(finalizedLines)
+            selectedLines.clear()
+            selectionDragOffset = Offset.Zero
+            selectionScale = 1f
+            commitChanges()
+        }
+    }
+
     val currentCommitChanges by rememberUpdatedState(commitChanges)
     DisposableEffect(Unit) {
         onDispose {
@@ -138,6 +203,7 @@ fun SNoteEditor(
     }
 
     val commitActiveText = {
+        commitLassoSelection()
         if (activeTextInputPosition != null) {
             if (activeTextValue.text.isNotBlank()) {
                 val cVal = Color(currentColorValue.toULong())
@@ -190,17 +256,18 @@ fun SNoteEditor(
                         IconButton(
                             onClick = {
                                 commitActiveText()
-                                if (!isEraserMode && !isHighlighterMode && !isTextMode) {
+                                if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) {
                                     showThicknessMenu = true
                                 } else {
                                     isEraserMode = false
                                     isHighlighterMode = false
                                     isTextMode = false
+                                    isLassoMode = false
                                 }
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                             )
                         ) {
                             Icon(Icons.Default.Create, contentDescription = "Pen", modifier = Modifier.size(20.dp))
@@ -245,6 +312,7 @@ fun SNoteEditor(
                                     isEraserMode = true
                                     isHighlighterMode = false
                                     isTextMode = false
+                                    isLassoMode = false
                                 }
                             },
                             modifier = Modifier.size(38.dp),
@@ -296,6 +364,7 @@ fun SNoteEditor(
                                     isHighlighterMode = true
                                     isEraserMode = false
                                     isTextMode = false
+                                    isLassoMode = false
                                 }
                             },
                             modifier = Modifier.size(38.dp),
@@ -347,6 +416,7 @@ fun SNoteEditor(
                                     isTextMode = true
                                     isHighlighterMode = false
                                     isEraserMode = false
+                                    isLassoMode = false
                                 }
                             },
                             modifier = Modifier.size(38.dp),
@@ -374,6 +444,24 @@ fun SNoteEditor(
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = {
+                                commitActiveText()
+                                isLassoMode = true
+                                isEraserMode = false
+                                isHighlighterMode = false
+                                isTextMode = false
+                            },
+                            modifier = Modifier.size(38.dp),
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = if (isLassoMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                            )
+                        ) {
+                            Icon(LassoIcon, contentDescription = "Lasso", modifier = Modifier.size(20.dp))
                         }
                     }
 
@@ -533,7 +621,7 @@ fun SNoteEditor(
                                 .fillMaxWidth()
                                 .height(pageHeightDp * pageCount)
                                 .graphicsLayer(alpha = 0.99f) // Force offscreen layer to support true transparent erasing
-                                .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode, isTextMode) {
+                                .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode, isTextMode, isLassoMode) {
                                     awaitPointerEventScope {
                                         while (true) {
                                             val event = awaitPointerEvent()
@@ -660,6 +748,26 @@ fun SNoteEditor(
                                                         activeTextValue = TextFieldValue("")
                                                         commitChanges()
                                                     }
+                                                } else if (isLassoMode) {
+                                                    // Handle lasso tool start
+                                                    change.consume()
+                                                    val tapPos = change.position
+                                                    
+                                                    // Determine if tap is inside the current selection bounding box or handle
+                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale)
+                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale)
+
+                                                    if (draggingHandle) {
+                                                        isScalingSelection = true
+                                                    } else if (dragging) {
+                                                        isDraggingSelection = true
+                                                    } else {
+                                                        // Tap outside selection -> clear previous selection and start new lasso
+                                                        if (selectedLines.isNotEmpty()) {
+                                                            commitLassoSelection()
+                                                        }
+                                                        lassoPath = listOf(tapPos)
+                                                    }
                                                 } else if (currentPath == null) {
                                                     commitActiveText()
                                                     currentPath = listOf(change.position)
@@ -675,11 +783,66 @@ fun SNoteEditor(
                                                      )
                                                  }
                                             } else if (change.pressed && change.previousPressed) {
-                                                 if (!isTextMode && currentPath != null) {
+                                                 if (isLassoMode) {
+                                                     change.consume()
+                                                     if (isScalingSelection) {
+                                                         val dx = change.position.x - change.previousPosition.x
+                                                         val dy = change.position.y - change.previousPosition.y
+                                                         // Base scale change off total drag distance out/in
+                                                         val scaleDelta = (dx + dy) / 400f
+                                                         selectionScale = kotlin.math.max(0.1f, selectionScale + scaleDelta)
+                                                     } else if (isDraggingSelection) {
+                                                         val dragAmount = change.position - change.previousPosition
+                                                         selectionDragOffset += dragAmount
+                                                     } else if (lassoPath != null) {
+                                                         lassoPath = lassoPath!! + change.position
+                                                     }
+                                                 } else if (!isTextMode && currentPath != null) {
                                                      currentPath = currentPath!! + change.position
                                                  }
                                             } else if (!change.pressed && change.previousPressed) {
-                                                if (!isTextMode && currentPath != null) {
+                                                if (isLassoMode) {
+                                                    if (isScalingSelection) {
+                                                        isScalingSelection = false
+                                                    } else if (isDraggingSelection) {
+                                                        isDraggingSelection = false
+                                                    } else if (lassoPath != null) {
+                                                        // Lasso drawing finished, calculate enclosed lines
+                                                        val capturedLassoPath = lassoPath!!
+                                                        lassoPath = null
+                                                        
+                                                        val newSelection = mutableListOf<DrawingLine>()
+                                                        val remainingLines = mutableListOf<DrawingLine>()
+                                                        
+                                                        // Basic AABB intersection logic for simplicity (can evolve to Polygon hit-test later)
+                                                        val minX = capturedLassoPath.minOfOrNull { it.x } ?: 0f
+                                                        val maxX = capturedLassoPath.maxOfOrNull { it.x } ?: 0f
+                                                        val minY = capturedLassoPath.minOfOrNull { it.y } ?: 0f
+                                                        val maxY = capturedLassoPath.maxOfOrNull { it.y } ?: 0f
+                                                        val lassoRect = androidx.compose.ui.geometry.Rect(minX, minY, maxX, maxY)
+                                                        
+                                                        for (l in drawingLines) {
+                                                            if (l.points.isEmpty()) continue
+                                                            // Check if line's average points or AABB center falls within lasso rect
+                                                            val cX = l.points.map { it.x }.average().toFloat()
+                                                            val cY = l.points.map { it.y }.average().toFloat()
+                                                            
+                                                            if (lassoRect.contains(Offset(cX, cY))) {
+                                                                newSelection.add(l)
+                                                            } else {
+                                                                remainingLines.add(l)
+                                                            }
+                                                        }
+                                                        
+                                                        if (newSelection.isNotEmpty()) {
+                                                            drawingLines.clear()
+                                                            drawingLines.addAll(remainingLines)
+                                                            selectedLines.addAll(newSelection)
+                                                            selectionDragOffset = Offset.Zero
+                                                            selectionScale = 1f
+                                                        }
+                                                    }
+                                                } else if (!isTextMode && currentPath != null) {
                                                     drawingLines.add(currentProperties.copy(points = currentPath!!))
                                                     undoneLines.clear()
                                                     currentPath = null
@@ -743,6 +906,99 @@ fun SNoteEditor(
                                     ),
                                     blendMode = finalBlendMode
                                 )
+                            }
+
+                            // Draw lasso path
+                            lassoPath?.let { lPath ->
+                                val p = Path()
+                                lPath.forEachIndexed { index, point ->
+                                    if (index == 0) p.moveTo(point.x, point.y) else p.lineTo(point.x, point.y)
+                                }
+                                drawPath(
+                                    path = p,
+                                    color = primaryColor,
+                                    style = Stroke(
+                                        width = 2.dp.toPx(),
+                                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                    )
+                                )
+                            }
+                            
+                            // Draw selected lines (dragged)
+                            if (selectedLines.isNotEmpty()) {
+                                // Draw bounding box
+                                var minX = Float.MAX_VALUE
+                                var minY = Float.MAX_VALUE
+                                var maxX = Float.MIN_VALUE
+                                var maxY = Float.MIN_VALUE
+                                
+                                selectedLines.forEach { l ->
+                                    l.points.forEach { pt ->
+                                        if (pt.x < minX) minX = pt.x
+                                        if (pt.y < minY) minY = pt.y
+                                        if (pt.x > maxX) maxX = pt.x
+                                        if (pt.y > maxY) maxY = pt.y
+                                    }
+                                }
+                                val cX = (minX + maxX) / 2f
+                                val cY = (minY + maxY) / 2f
+
+                                selectedLines.forEach { l ->
+                                    val finalColor = when {
+                                        l.isEraser -> Color.LightGray.copy(alpha = 0.5f)
+                                        l.isHighlighter -> l.color.copy(alpha = 0.4f)
+                                        else -> l.color.copy(alpha = 0.7f)
+                                    }
+                                    
+                                    val offsetPath = Path()
+                                    l.points.forEachIndexed { idx, pt ->
+                                        val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
+                                        val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+
+                                        if (idx == 0) offsetPath.moveTo(pX, pY) else offsetPath.lineTo(pX, pY)
+                                    }
+                                    
+                                    drawPath(
+                                        path = offsetPath,
+                                        color = finalColor,
+                                        style = Stroke(
+                                            width = l.strokeWidth * selectionScale,
+                                            cap = if (l.isHighlighter) StrokeCap.Square else StrokeCap.Round,
+                                            join = StrokeJoin.Round
+                                        )
+                                    )
+                                }
+                                
+                                // Dashed selection bounds
+                                if (minX < maxX && minY < maxY) {
+                                    val sMinX = cX + (minX - cX) * selectionScale + selectionDragOffset.x
+                                    val sMinY = cY + (minY - cY) * selectionScale + selectionDragOffset.y
+                                    val sMaxX = cX + (maxX - cX) * selectionScale + selectionDragOffset.x
+                                    val sMaxY = cY + (maxY - cY) * selectionScale + selectionDragOffset.y
+
+                                    val boundsPadding = 16f
+                                    drawRect(
+                                        color = primaryColor,
+                                        topLeft = Offset(sMinX - boundsPadding, sMinY - boundsPadding),
+                                        size = Size(sMaxX - sMinX + boundsPadding * 2, sMaxY - sMinY + boundsPadding * 2),
+                                        style = Stroke(
+                                            width = 1.dp.toPx(),
+                                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                        )
+                                    )
+
+                                    // Scale Handle
+                                    drawCircle(
+                                        color = primaryColor,
+                                        radius = 6.dp.toPx(),
+                                        center = Offset(sMaxX + boundsPadding, sMaxY + boundsPadding)
+                                    )
+                                    drawCircle(
+                                        color = Color.White,
+                                        radius = 4.dp.toPx(),
+                                        center = Offset(sMaxX + boundsPadding, sMaxY + boundsPadding)
+                                    )
+                                }
                             }
                         }
 
@@ -915,4 +1171,73 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageLayout(
             textPaint
         )
     }
+}
+
+// Helper to determine if tap is inside the selection bounds
+private fun isPointInSelectionBounds(
+    point: Offset,
+    selectedLines: List<DrawingLine>,
+    dragOffset: Offset,
+    scale: Float
+): Boolean {
+    if (selectedLines.isEmpty()) return false
+    var minX = Float.MAX_VALUE
+    var minY = Float.MAX_VALUE
+    var maxX = Float.MIN_VALUE
+    var maxY = Float.MIN_VALUE
+    selectedLines.forEach { l ->
+        l.points.forEach { pt ->
+            if (pt.x < minX) minX = pt.x
+            if (pt.y < minY) minY = pt.y
+            if (pt.x > maxX) maxX = pt.x
+            if (pt.y > maxY) maxY = pt.y
+        }
+    }
+    
+    val cX = (minX + maxX) / 2f
+    val cY = (minY + maxY) / 2f
+
+    val sMinX = cX + (minX - cX) * scale + dragOffset.x
+    val sMinY = cY + (minY - cY) * scale + dragOffset.y
+    val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
+    val sMaxY = cY + (maxY - cY) * scale + dragOffset.y
+
+    val boundsPadding = 24f
+    return point.x in (sMinX - boundsPadding)..(sMaxX + boundsPadding) &&
+           point.y in (sMinY - boundsPadding)..(sMaxY + boundsPadding)
+}
+
+private fun isPointInScaleHandle(
+    point: Offset,
+    selectedLines: List<DrawingLine>,
+    dragOffset: Offset,
+    scale: Float
+): Boolean {
+    if (selectedLines.isEmpty()) return false
+    var minX = Float.MAX_VALUE
+    var minY = Float.MAX_VALUE
+    var maxX = Float.MIN_VALUE
+    var maxY = Float.MIN_VALUE
+    selectedLines.forEach { l ->
+        l.points.forEach { pt ->
+            if (pt.x < minX) minX = pt.x
+            if (pt.y < minY) minY = pt.y
+            if (pt.x > maxX) maxX = pt.x
+            if (pt.y > maxY) maxY = pt.y
+        }
+    }
+    val cX = (minX + maxX) / 2f
+    val cY = (minY + maxY) / 2f
+    
+    val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
+    val sMaxY = cY + (maxY - cY) * scale + dragOffset.y
+
+    val boundsPadding = 16f
+    val handleX = sMaxX + boundsPadding
+    val handleY = sMaxY + boundsPadding
+    val hitRadius = 60f // generous hit area for touch
+    
+    val dx = point.x - handleX
+    val dy = point.y - handleY
+    return (dx * dx + dy * dy) <= hitRadius * hitRadius
 }

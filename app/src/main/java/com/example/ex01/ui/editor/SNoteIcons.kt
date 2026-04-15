@@ -81,3 +81,29 @@ val HighlighterIcon: ImageVector
         }
     }.build()
 
+val LassoIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Lasso",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(fill = androidx.compose.ui.graphics.SolidColor(Color.Black)) {
+            moveTo(14f, 13f)
+            curveTo(17f, 13f, 19f, 11f, 19f, 8f)
+            curveTo(19f, 5f, 16f, 3f, 12f, 3f)
+            curveTo(8f, 3f, 5f, 5f, 5f, 8f)
+            curveTo(5f, 11f, 7f, 13f, 10f, 13f)
+            lineTo(10f, 21f)
+            horizontalLineTo(14f)
+            lineTo(14f, 13f)
+            close()
+            moveTo(12f, 5f)
+            curveTo(14f, 5f, 16f, 6.5f, 16f, 8f)
+            curveTo(16f, 9.5f, 14f, 11f, 12f, 11f)
+            curveTo(10f, 11f, 8f, 9.5f, 8f, 8f)
+            curveTo(8f, 6.5f, 10f, 5f, 12f, 5f)
+            close()
+        }
+    }.build()
