@@ -434,19 +434,10 @@ fun NoteCard(
                                 val isNightMode = strokeColor.luminance() > 0.5f // text is bright
                                 androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).padding(4.dp).graphicsLayer(alpha = 0.99f)) {
                                     scale(0.28f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                                        for (line in lines!!) {
-                                            if (line.text != null && line.points.isNotEmpty()) {
-                                                val uiColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified) strokeColor else line.color
-                                                val finalColor = if (isNightMode && uiColor.luminance() < 0.4f) androidx.compose.ui.graphics.Color.White else uiColor
-                                                val paint = android.graphics.Paint().apply {
-                                                    textSize = line.strokeWidth
-                                                    isAntiAlias = true
-                                                    color = android.graphics.Color.argb((finalColor.alpha * 255).toInt(), (finalColor.red * 255).toInt(), (finalColor.green * 255).toInt(), (finalColor.blue * 255).toInt())
-                                                }
-                                                drawContext.canvas.nativeCanvas.drawText(line.text, line.points.first().x, line.points.first().y - paint.fontMetrics.ascent, paint)
-                                                continue
-                                            }
-                                            
+                                        val drawableLines = lines!!.filter { it.text == null || it.points.isEmpty() }
+                                        val textLines = lines!!.filter { it.text != null && it.points.isNotEmpty() }
+
+                                        for (line in drawableLines) {
                                             val activeLineColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified || line.color == androidx.compose.ui.graphics.Color.Black || line.color == androidx.compose.ui.graphics.Color.White) strokeColor else line.color
                                             val finalColor = when {
                                                 line.isEraser -> androidx.compose.ui.graphics.Color.Transparent
@@ -458,7 +449,7 @@ fun NoteCard(
                                                 line.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
                                                 else -> androidx.compose.ui.graphics.BlendMode.SrcOver
                                             }
-                                            
+
                                             drawPath(
                                                 path = line.toPath(),
                                                 color = finalColor,
@@ -469,6 +460,37 @@ fun NoteCard(
                                                 ),
                                                 blendMode = finalBlendMode
                                             )
+                                        }
+
+                                        for (line in textLines) {
+                                            val uiColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified) strokeColor else line.color
+                                            val finalColor = if (isNightMode && uiColor.luminance() < 0.4f) androidx.compose.ui.graphics.Color.White else uiColor
+                                            val textPaint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                                textSize = line.strokeWidth * 1.15f // Slight boost counters subpixel thinning in scaled matrices
+                                                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                                                isLinearText = true
+                                                isSubpixelText = true
+                                                color = android.graphics.Color.argb((finalColor.alpha * 255).toInt(), (finalColor.red * 255).toInt(), (finalColor.green * 255).toInt(), (finalColor.blue * 255).toInt())
+                                            }
+
+                                            val textX = line.points.first().x
+                                            val textY = line.points.first().y
+                                            val virtualWidth = size.width / 0.28f
+                                            val maxTextWidth = kotlin.math.max(1f, virtualWidth - textX - 12f).toInt()
+
+                                            val targetLineHeightPx = 64f * 1.2f // TEXT_LARGE (64f) * 1.2f
+                                            val spacingAdd = targetLineHeightPx - textPaint.textSize
+
+                                            val staticLayout = android.text.StaticLayout.Builder.obtain(line.text!!, 0, line.text.length, textPaint, maxTextWidth)
+                                                .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                                                .setLineSpacing(spacingAdd, 1f)
+                                                .setIncludePad(false)
+                                                .build()
+
+                                            drawContext.canvas.nativeCanvas.save()
+                                            drawContext.canvas.nativeCanvas.translate(textX, textY)
+                                            staticLayout.draw(drawContext.canvas.nativeCanvas)
+                                            drawContext.canvas.nativeCanvas.restore()
                                         }
                                     }
                                 }

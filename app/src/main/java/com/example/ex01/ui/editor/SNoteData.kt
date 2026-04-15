@@ -39,15 +39,20 @@ data class DrawingLine(
     val isHighlighter: Boolean = false,
     val text: String? = null
 ) {
+    @Transient // Prevent potential serialization/reflection problems
+    private var _cachedPath: Path? = null
+
     fun toPath(): Path {
-        val path = Path()
+        if (_cachedPath != null) return _cachedPath!!
+        val p = Path()
         if (points.isNotEmpty()) {
-            path.moveTo(points.first().x, points.first().y)
+            p.moveTo(points.first().x, points.first().y)
             for (i in 1 until points.size) {
-                path.lineTo(points[i].x, points[i].y)
+                p.lineTo(points[i].x, points[i].y)
             }
         }
-        return path
+        _cachedPath = p
+        return p
     }
 }
 
