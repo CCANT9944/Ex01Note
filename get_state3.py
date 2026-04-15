@@ -1,0 +1,8 @@
+
+import re
+with open("app/src/main/java/com/example/ex01/ui/editor/SNoteEditor.kt", "r", encoding="utf-8") as f:
+    text = f.read()
+start = text.find("// Render Static Text natively")
+if start != -1:
+    print(text[start-500:start+200])
+

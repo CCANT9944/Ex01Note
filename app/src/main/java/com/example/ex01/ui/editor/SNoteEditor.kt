@@ -160,28 +160,7 @@ fun SNoteEditor(
         }
     }
 
-    val splitTextForNewStyle = {
-        if (activeTextInputPosition != null && activeTextValue.text.isNotBlank()) {
-            val oldPos = activeTextInputPosition!!
-            val oldText = activeTextValue.text
 
-            val cleanText = oldText.trimEnd('\n', '\r')
-            if (cleanText.isNotBlank()) {
-                activeTextValue = TextFieldValue(cleanText)
-                commitActiveText() // Saves current text with old size permanently to the canvas
-
-                // Determine how many lines down to shift the new box so it seamlessly follows the old text
-                val rowHeight = TEXT_LARGE * 1.2f
-                val trailingNewlines = oldText.length - cleanText.length
-                val actualLines = cleanText.count { it == '\n' } + 1
-                val totalShift = actualLines + trailingNewlines
-
-                activeTextInputPosition = Offset(oldPos.x, oldPos.y + (rowHeight * totalShift))
-                activeTextValue = TextFieldValue("")
-                commitChanges()
-            }
-        }
-    }
 
     val strokeColor = MaterialTheme.colorScheme.onSurface
     val eraserColor = MaterialTheme.colorScheme.surface
@@ -390,7 +369,6 @@ fun SNoteEditor(
                                     },
                                     contentPadding = PaddingValues(horizontal = 4.dp),
                                     onClick = {
-                                        splitTextForNewStyle()
                                         updateTextSize(size)
                                         showTextSizeMenu = false
                                     }
@@ -427,7 +405,6 @@ fun SNoteEditor(
                                         }
                                     },
                                     onClick = {
-                                        splitTextForNewStyle()
                                         updatePenColor(c.value.toLong())
                                         showColorMenu = false
                                     }
@@ -522,7 +499,9 @@ fun SNoteEditor(
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val availableHeight = this.maxHeight
+                val availableWidth = this.maxWidth
                 val density = LocalDensity.current
+                val availableWidthPx = with(density) { availableWidth.toPx() }
 
                 LaunchedEffect(availableHeight) {
                     if (pageHeightDp == 0.dp) {
@@ -590,8 +569,19 @@ fun SNoteEditor(
                                                         if (l.text != null && l.points.isNotEmpty()) {
                                                             val py = l.points.first().y
                                                             val startRow = kotlin.math.round(py / rowHeight).toInt()
-                                                            val numRows = l.text.split("\n").size
-                                                            val endRow = startRow + numRows - 1
+
+                                                            val maxTextWidthPx = availableWidthPx - l.points.first().x - with(density) { 4.dp.toPx() }
+                                                            val pEst = android.graphics.Paint().apply { textSize = l.strokeWidth }
+                                                            var visualRows = 0
+                                                            for (lineStr in l.text.split("\n")) {
+                                                                val w = pEst.measureText(lineStr)
+                                                                if (maxTextWidthPx > 0f) {
+                                                                    visualRows += kotlin.math.max(1, kotlin.math.ceil((w / maxTextWidthPx).toDouble()).toInt())
+                                                                } else {
+                                                                    visualRows += 1
+                                                                }
+                                                            }
+                                                            val endRow = startRow + visualRows - 1
 
                                                             if (clickedRowIndex in startRow..endRow) {
                                                                 hitIndex = i
@@ -610,37 +600,56 @@ fun SNoteEditor(
                                                         val startRow = kotlin.math.round(py / rowHeight).toInt()
                                                         val safeText = hitLine.text!! // Keep original newlines
 
-                                                        val lines = safeText.split("\n")
-                                                        val targetLineIndex = (clickedRowIndex - startRow).coerceIn(0, lines.size - 1)
-
-                                                        var charIdxOff = 0
-                                                        for (i in 0 until targetLineIndex) {
-                                                            charIdxOff += lines[i].length + 1 // +1 for '\n'
-                                                        }
-
-                                                        val targetLineText = lines[targetLineIndex]
                                                         val p = android.graphics.Paint().apply { textSize = hitLine.strokeWidth }
-                                                        val widths = FloatArray(targetLineText.length)
-                                                        p.getTextWidths(targetLineText, widths)
+                                                        var finalCharIdx = safeText.length
 
-                                                        val tapDX = tapPos.x - hitLine.points.first().x
-                                                        var curX = 0f
-                                                        var charIdxInLine = targetLineText.length
-                                                        for (i in widths.indices) {
-                                                            if (tapDX < curX + widths[i] / 2f) {
-                                                                charIdxInLine = i
+                                                        val maxTextWidthPx = availableWidthPx - hitLine.points.first().x - with(density) { 4.dp.toPx() }
+                                                        val lines = safeText.split("\n")
+                                                        var currentVisualRowIdx = startRow
+                                                        var charIdxOff = 0
+
+                                                        // Fallback logic for hit tapping
+                                                        for (lineStr in lines) {
+                                                            var w = p.measureText(lineStr)
+                                                            val rowsForThisLine = if (maxTextWidthPx > 0f) kotlin.math.max(1, kotlin.math.ceil((w / maxTextWidthPx).toDouble()).toInt()) else 1
+                                                            val endVisualRowForThisLine = currentVisualRowIdx + rowsForThisLine - 1
+
+                                                            if (clickedRowIndex in currentVisualRowIdx..endVisualRowForThisLine) {
+                                                                if (clickedRowIndex == endVisualRowForThisLine && lineStr.isNotEmpty()) {
+                                                                    // Roughly tapped on the last visual chunk of this hard line or a wrapped line.
+                                                                    val widths = FloatArray(lineStr.length)
+                                                                    p.getTextWidths(lineStr, widths)
+                                                                    val tapDX = tapPos.x - hitLine.points.first().x
+
+                                                                    if (rowsForThisLine > 1) {
+                                                                        // Simplest fallback for soft-wrapped lines: place cursor at end
+                                                                        // to prevent jumping to the very beginning due to wrap offset mismatch.
+                                                                        finalCharIdx = charIdxOff + lineStr.length
+                                                                    } else {
+                                                                        var curX = 0f
+                                                                        var charIdxInLine = lineStr.length
+                                                                        for (i in widths.indices) {
+                                                                            if (tapDX < curX + widths[i] / 2f) {
+                                                                                charIdxInLine = i
+                                                                                break
+                                                                            }
+                                                                            curX += widths[i]
+                                                                        }
+                                                                        if (tapDX < 0) charIdxInLine = 0
+                                                                        else if (tapDX > curX + 20f) charIdxInLine = lineStr.length
+
+                                                                        finalCharIdx = charIdxOff + charIdxInLine
+                                                                    }
+                                                                } else {
+                                                                    // Tapped somewhere on a completely wrapped block.
+                                                                    // Safest interaction model is placing at the end of the full line.
+                                                                    finalCharIdx = charIdxOff + lineStr.length
+                                                                }
                                                                 break
                                                             }
-                                                            curX += widths[i]
+                                                            currentVisualRowIdx += rowsForThisLine
+                                                            charIdxOff += lineStr.length + 1 // +1 for '\n'
                                                         }
-
-                                                        if (tapDX < 0) {
-                                                            charIdxInLine = 0
-                                                        } else if (tapDX > curX + 20f) {
-                                                            charIdxInLine = targetLineText.length
-                                                        }
-
-                                                        val finalCharIdx = charIdxOff + charIdxInLine
 
                                                         activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
                                                         currentTextSize = hitLine.strokeWidth
@@ -741,9 +750,15 @@ fun SNoteEditor(
                         drawingLines.forEach { line ->
                             if (line.text != null && line.points.isNotEmpty()) {
                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
+                                val xPosDp = with(LocalDensity.current) { line.points.first().x.toDp() }
+                                val maxTextWidth = availableWidth - xPosDp - 4.dp
                                 Text(
                                     text = line.text,
-                                    softWrap = false,
+                                    modifier = Modifier
+                                        .offset {
+                                            IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
+                                        }
+                                        .widthIn(max = maxTextWidth),
                                     style = androidx.compose.ui.text.TextStyle(
                                         color = activeLineColor,
                                         fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() },
@@ -755,11 +770,7 @@ fun SNoteEditor(
                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
                                             includeFontPadding = false
                                         )
-                                    ),
-                                    modifier = Modifier
-                                        .offset {
-                                            IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
-                                        }
+                                    )
                                 )
                             }
                         }
@@ -768,6 +779,8 @@ fun SNoteEditor(
                         if (activeTextInputPosition != null) {
                             val cVal = Color(currentColorValue.toULong())
                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
+                            val xPosDp = with(LocalDensity.current) { activeTextInputPosition!!.x.toDp() }
+                            val maxTextWidth = availableWidth - xPosDp - 4.dp
                             BasicTextField(
                                 value = activeTextValue,
                                 onValueChange = {
@@ -775,6 +788,7 @@ fun SNoteEditor(
                                 },
                                 modifier = Modifier
                                     .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
+                                    .widthIn(max = maxTextWidth)
                                     .focusRequester(focusRequester)
                                     .background(Color.Transparent),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
