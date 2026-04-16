@@ -32,9 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -44,8 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Composable
 fun SectionHeader(
@@ -409,93 +404,11 @@ fun NoteCard(
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 Column(modifier = Modifier.fillMaxSize().padding(end = 4.dp, start = 4.dp)) {
                     if (isSNote) {
-                        if (note.body.isBlank()) {
-                            Text(
-                                text = "Empty canvas",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        } else {
-                            var lines by remember(note.body) { mutableStateOf<List<com.example.ex01.ui.editor.DrawingLine>?>(null) }
-                            LaunchedEffect(note.body) {
-                                withContext(Dispatchers.Default) {
-                                    lines = com.example.ex01.ui.editor.deserializeDrawing(note.body)
-                                }
-                            }
-                            
-                            if (lines.isNullOrEmpty()) {
-                                Text(
-                                    text = "S-Note Drawing",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                            } else {
-                                val strokeColor = MaterialTheme.colorScheme.onSurface
-                                val isNightMode = strokeColor.luminance() > 0.5f // text is bright
-                                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(100.dp).padding(4.dp).graphicsLayer(alpha = 0.99f)) {
-                                    scale(0.28f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                                        val drawableLines = lines!!.filter { it.text == null || it.points.isEmpty() }
-                                        val textLines = lines!!.filter { it.text != null && it.points.isNotEmpty() }
-
-                                        for (line in drawableLines) {
-                                            val activeLineColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified || line.color == androidx.compose.ui.graphics.Color.Black || line.color == androidx.compose.ui.graphics.Color.White) strokeColor else line.color
-                                            val finalColor = when {
-                                                line.isEraser -> androidx.compose.ui.graphics.Color.Transparent
-                                                line.isHighlighter -> activeLineColor.copy(alpha = 0.4f)
-                                                else -> activeLineColor
-                                            }
-                                            val finalBlendMode = when {
-                                                line.isEraser -> androidx.compose.ui.graphics.BlendMode.Clear
-                                                line.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
-                                                else -> androidx.compose.ui.graphics.BlendMode.SrcOver
-                                            }
-
-                                            drawPath(
-                                                path = line.toPath(),
-                                                color = finalColor,
-                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                    width = line.strokeWidth,
-                                                    cap = if (line.isHighlighter) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
-                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                ),
-                                                blendMode = finalBlendMode
-                                            )
-                                        }
-
-                                        for (line in textLines) {
-                                            val uiColor = if (line.color == androidx.compose.ui.graphics.Color.Unspecified) strokeColor else line.color
-                                            val finalColor = if (isNightMode && uiColor.luminance() < 0.4f) androidx.compose.ui.graphics.Color.White else uiColor
-                                            val textPaint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                                textSize = line.strokeWidth * 1.15f // Slight boost counters subpixel thinning in scaled matrices
-                                                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-                                                isLinearText = true
-                                                isSubpixelText = true
-                                                color = android.graphics.Color.argb((finalColor.alpha * 255).toInt(), (finalColor.red * 255).toInt(), (finalColor.green * 255).toInt(), (finalColor.blue * 255).toInt())
-                                            }
-
-                                            val textX = line.points.first().x
-                                            val textY = line.points.first().y
-                                            val virtualWidth = size.width / 0.28f
-                                            val maxTextWidth = kotlin.math.max(1f, virtualWidth - textX - 12f).toInt()
-
-                                            val targetLineHeightPx = 64f * 1.2f // TEXT_LARGE (64f) * 1.2f
-                                            val spacingAdd = targetLineHeightPx - textPaint.textSize
-
-                                            val staticLayout = android.text.StaticLayout.Builder.obtain(line.text!!, 0, line.text.length, textPaint, maxTextWidth)
-                                                .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                                                .setLineSpacing(spacingAdd, 1f)
-                                                .setIncludePad(false)
-                                                .build()
-
-                                            drawContext.canvas.nativeCanvas.save()
-                                            drawContext.canvas.nativeCanvas.translate(textX, textY)
-                                            staticLayout.draw(drawContext.canvas.nativeCanvas)
-                                            drawContext.canvas.nativeCanvas.restore()
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        Text(
+                            text = if (note.body.isBlank()) "Empty canvas" else "S-Note Drawing",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
                     } else if (bodyStyleNote) {
                         val previewBody = notePageBody(note.body, 0).trim().replace(Regex("[\uE000-\uE009]"), "")
                         if (previewBody.isNotBlank()) {
@@ -606,7 +519,6 @@ fun NoteItemRow(
         }
     }
 }
-
 
 
 
