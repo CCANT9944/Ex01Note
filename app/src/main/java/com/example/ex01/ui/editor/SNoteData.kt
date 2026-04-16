@@ -109,11 +109,12 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
                 rawColor
             }
 
-            lines.add(DrawingLine(points, finalColor, stroke, inferredEraser, isHighlighter, text))
+            val line = DrawingLine(points, finalColor, stroke, inferredEraser, isHighlighter, text)
+            line.toPath() // precalculate in background to prevent UI freeze
+            lines.add(line)
         }
     } catch (e: Exception) {
         e.printStackTrace()
     }
     return lines
 }
-
