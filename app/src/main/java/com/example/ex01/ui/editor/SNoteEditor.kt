@@ -121,6 +121,7 @@ fun SNoteEditor(
             var maxX = Float.MIN_VALUE
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
+                if (l.isEraser) return@forEach
                 l.points.forEach { pt ->
                     if (pt.x < minX) minX = pt.x
                     if (pt.y < minY) minY = pt.y
@@ -166,6 +167,7 @@ fun SNoteEditor(
             var maxX = Float.MIN_VALUE
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
+                if (l.isEraser) return@forEach
                 l.points.forEach { pt ->
                     if (pt.x < minX) minX = pt.x
                     if (pt.y < minY) minY = pt.y
@@ -821,19 +823,48 @@ fun SNoteEditor(
                                                         val maxY = capturedLassoPath.maxOfOrNull { it.y } ?: 0f
                                                         val lassoRect = androidx.compose.ui.geometry.Rect(minX, minY, maxX, maxY)
                                                         
-                                                        for (l in drawingLines) {
+                                                        for ((index, l) in drawingLines.withIndex()) {
                                                             if (l.points.isEmpty()) continue
-                                                            // Check if line's average points or AABB center falls within lasso rect
-                                                            val cX = l.points.map { it.x }.average().toFloat()
-                                                            val cY = l.points.map { it.y }.average().toFloat()
-                                                            
-                                                            if (lassoRect.contains(Offset(cX, cY))) {
+
+                                                            if (l.isEraser) {
+                                                                remainingLines.add(l)
+                                                                continue
+                                                            }
+
+                                                            // Fast precise geometry intersection that mathematically ignores ANY points visually "covered" by subsequent erasers
+                                                            val isSelected = l.points.any { pt ->
+                                                                if (!lassoRect.contains(pt)) return@any false
+                                                                if (!isPointInPolygon(pt, capturedLassoPath)) return@any false
+
+                                                                if (l.text != null) return@any true // Text elements bypass Canvas composite erasers natively
+
+                                                                var pointErased = false
+                                                                for (j in index + 1 until drawingLines.size) {
+                                                                    val e = drawingLines[j]
+                                                                    if (e.isEraser) {
+                                                                        val rSq = e.strokeWidth * e.strokeWidth // Broad radius bounds to buffer interpolation
+                                                                        for (ept in e.points) {
+                                                                            val dx = pt.x - ept.x
+                                                                            val dy = pt.y - ept.y
+                                                                            if (dx * dx + dy * dy <= rSq) {
+                                                                                pointErased = true
+                                                                                break
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    if (pointErased) break
+                                                                }
+                                                                !pointErased
+                                                            }
+
+                                                            if (isSelected) {
                                                                 newSelection.add(l)
                                                             } else {
                                                                 remainingLines.add(l)
                                                             }
                                                         }
-                                                        
+
+
                                                         if (newSelection.isNotEmpty()) {
                                                             drawingLines.clear()
                                                             drawingLines.addAll(remainingLines)
@@ -927,47 +958,55 @@ fun SNoteEditor(
                             // Draw selected lines (dragged)
                             if (selectedLines.isNotEmpty()) {
                                 // Draw bounding box
-                                var minX = Float.MAX_VALUE
-                                var minY = Float.MAX_VALUE
-                                var maxX = Float.MIN_VALUE
-                                var maxY = Float.MIN_VALUE
-                                
-                                selectedLines.forEach { l ->
-                                    l.points.forEach { pt ->
-                                        if (pt.x < minX) minX = pt.x
-                                        if (pt.y < minY) minY = pt.y
-                                        if (pt.x > maxX) maxX = pt.x
-                                        if (pt.y > maxY) maxY = pt.y
-                                    }
-                                }
-                                val cX = (minX + maxX) / 2f
-                                val cY = (minY + maxY) / 2f
+                                    var minX = Float.MAX_VALUE
+                                    var minY = Float.MAX_VALUE
+                                    var maxX = Float.MIN_VALUE
+                                    var maxY = Float.MIN_VALUE
 
-                                selectedLines.forEach { l ->
-                                    val finalColor = when {
-                                        l.isEraser -> Color.LightGray.copy(alpha = 0.5f)
-                                        l.isHighlighter -> l.color.copy(alpha = 0.4f)
-                                        else -> l.color.copy(alpha = 0.7f)
+                                    selectedLines.forEach { l ->
+                                        if (l.isEraser) return@forEach
+                                        l.points.forEach { pt ->
+                                            if (pt.x < minX) minX = pt.x
+                                            if (pt.y < minY) minY = pt.y
+                                            if (pt.x > maxX) maxX = pt.x
+                                            if (pt.y > maxY) maxY = pt.y
+                                        }
                                     }
-                                    
-                                    val offsetPath = Path()
-                                    l.points.forEachIndexed { idx, pt ->
-                                        val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
-                                        val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+                                    val cX = (minX + maxX) / 2f
+                                    val cY = (minY + maxY) / 2f
 
-                                        if (idx == 0) offsetPath.moveTo(pX, pY) else offsetPath.lineTo(pX, pY)
-                                    }
-                                    
-                                    drawPath(
-                                        path = offsetPath,
-                                        color = finalColor,
-                                        style = Stroke(
-                                            width = l.strokeWidth * selectionScale,
-                                            cap = if (l.isHighlighter) StrokeCap.Square else StrokeCap.Round,
-                                            join = StrokeJoin.Round
+                                    selectedLines.forEach { l ->
+                                        val finalColor = when {
+                                            l.isEraser -> Color.Black
+                                            l.isHighlighter -> l.color.copy(alpha = 0.4f)
+                                            else -> l.color.copy(alpha = 0.7f)
+                                        }
+
+                                        val finalBlendMode = when {
+                                            l.isEraser -> androidx.compose.ui.graphics.BlendMode.Clear
+                                            l.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
+                                            else -> androidx.compose.ui.graphics.BlendMode.SrcOver
+                                        }
+                                        
+                                        val offsetPath = Path()
+                                        l.points.forEachIndexed { idx, pt ->
+                                            val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
+                                            val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+
+                                            if (idx == 0) offsetPath.moveTo(pX, pY) else offsetPath.lineTo(pX, pY)
+                                        }
+                                        
+                                        drawPath(
+                                            path = offsetPath,
+                                            color = finalColor,
+                                            style = Stroke(
+                                                width = l.strokeWidth * selectionScale,
+                                                cap = if (l.isHighlighter) StrokeCap.Square else StrokeCap.Round,
+                                                join = StrokeJoin.Round
+                                            ),
+                                            blendMode = finalBlendMode
                                         )
-                                    )
-                                }
+                                    }
                                 
                                 // Dashed selection bounds
                                 if (minX < maxX && minY < maxY) {
@@ -1186,6 +1225,7 @@ private fun isPointInSelectionBounds(
     var maxX = Float.MIN_VALUE
     var maxY = Float.MIN_VALUE
     selectedLines.forEach { l ->
+        if (l.isEraser) return@forEach
         l.points.forEach { pt ->
             if (pt.x < minX) minX = pt.x
             if (pt.y < minY) minY = pt.y
@@ -1219,6 +1259,7 @@ private fun isPointInScaleHandle(
     var maxX = Float.MIN_VALUE
     var maxY = Float.MIN_VALUE
     selectedLines.forEach { l ->
+        if (l.isEraser) return@forEach
         l.points.forEach { pt ->
             if (pt.x < minX) minX = pt.x
             if (pt.y < minY) minY = pt.y
@@ -1240,4 +1281,21 @@ private fun isPointInScaleHandle(
     val dx = point.x - handleX
     val dy = point.y - handleY
     return (dx * dx + dy * dy) <= hitRadius * hitRadius
+}
+
+private fun isPointInPolygon(point: Offset, polygon: List<Offset>): Boolean {
+    if (polygon.size < 3) return false
+    var isInside = false
+    var j = polygon.size - 1
+    for (i in polygon.indices) {
+        val pi = polygon[i]
+        val pj = polygon[j]
+        if ((pi.y > point.y) != (pj.y > point.y) &&
+            point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x
+        ) {
+            isInside = !isInside
+        }
+        j = i
+    }
+    return isInside
 }

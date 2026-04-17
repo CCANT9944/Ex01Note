@@ -97,8 +97,8 @@ class MainActivity : ComponentActivity() {
             val themeSettingsRepository = remember { ThemeSettingsRepository(context) }
             val themeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
             SideEffect {
-                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = themeMode == ThemeMode.LIGHT
-                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = themeMode == ThemeMode.LIGHT
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
             }
             val viewModel: NoteViewModel = viewModel(
                 factory = NoteViewModelFactory(application, database.noteDao())
@@ -685,8 +685,6 @@ fun MainScreen(
 
         if (showSettingsDialog) {
             AppSettingsDialog(
-                currentThemeMode = currentThemeMode,
-                onThemeModeSelected = themeSettingsRepository::setThemeMode,
                 onDismissRequest = { showSettingsDialog = false },
                 onOpenTrash = {
                     showSettingsDialog = false
@@ -1070,5 +1068,9 @@ fun FolderDetailScreen(
         }
     }
 }
+
+
+
+
 
 

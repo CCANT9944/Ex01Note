@@ -9,7 +9,7 @@ A fully-featured Jetpack Compose Android application acting as a highly function
   - **Checklists**: Keep track of tasks with interactive lists.
   - **S-Notes (Canvas)**: Draw, highlight, and type floating text directly onto a visual canvas.
 - **App Widgets**: Pin your favorite notes to the home screen for quick access.
-- **Theming**: Full Light and Dark mode support, custom folder colors, and dynamic UI elements.
+- **Theming**: Custom folder colors and dynamic UI elements. Light mode focused for optimum readability.
 - **Trash/Recycle Bin**: Soft-delete items and restore them later.
 
 ## Tech Stack
@@ -51,3 +51,6 @@ The app operates on a clean, domain-driven package structure:
 - **Lasso Selection & Scaling Tool:** Introduced a powerful new Lasso tool in the S-Note editor, allowing users to draw a selection path around drawn strokes and text. Selected elements can be dragged across the canvas and precisely resized using a dynamic scale handle directly on the selection bounding box. Transformations are auto-saved seamlessly and correctly handle touch interactions alongside scrollable views.
 - **S-Note Render Optimization & Theme Switching:** Completely eliminated UI freezes when toggling between Light and Dark mode by adding `configChanges="uiMode"` in `AndroidManifest.xml` alongside extensive background generation for memory allocation (`toPath()`). Mathematical stroke coordinates (`toPath()`) are now heavily optimized with a localized memory cache per line, and they are fully parsed in `Dispatchers.Default` _before_ being drawn on screen, completely preventing Jetpack Compose from unpredictably recalculating tens of thousands of data points on the main UI thread during full-screen recompositions.
 - **Enhanced S-Note Previews (Text & Layering):** Upgraded home screen Note Previews to accurately render multiline SNote text using native Android `StaticLayout` with precise line-height grid matching. Fixed Z-index layering issues where transparent eraser strokes incorrectly carved holes through floating text nodes, and applied text optimizations (`Typeface.BOLD`, subpixel hints) to drastically improve readability in heavily scaled-down canvas thumbnail previews.
+- **Precise Point-in-Polygon Lasso Selection:** Upgraded the Lasso selection engine from basic Axis-Aligned Bounding Box (AABB) intersection to a true Ray-Casting Point-in-Polygon algorithm. This ensures objects are only selected if they are strictly inside your drawn freeform lasso boundary, preventing overlapping bound grabs.
+- **Flawless Eraser Z-Order & Selection Mapping:** Resolved critical visual glitches where selecting visible drawings brought back invisible erased sections. Excluded mathematically invisible (erased) points from the selection hit-engine by dynamically testing dynamic collision against subsequent eraser radii. Selected eraser masks now reliably travel alongside their parent shapes in the exact Z-order natively natively as `BlendMode.Clear` during the drag loop.
+- **Focused UI Theming:** Temporarily removed Dark Mode to provide a streamlined, hyper-polished single Light Mode aesthetic across all navigation elements, dialogs, and editors.

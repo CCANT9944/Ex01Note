@@ -22,8 +22,6 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,14 +38,9 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppSettingsDialog(
-    currentThemeMode: ThemeMode,
-    onThemeModeSelected: (ThemeMode) -> Unit,
     onDismissRequest: () -> Unit,
     onOpenTrash: () -> Unit,
 ) {
-    val effectiveDarkTheme = currentThemeMode == ThemeMode.DARK
-    val nextThemeMode = if (effectiveDarkTheme) ThemeMode.LIGHT else ThemeMode.DARK
-    val toggleLabel = if (effectiveDarkTheme) "Theme / Light" else "Theme / Dark"
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val hasOpenedOnce = remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -77,19 +70,6 @@ fun AppSettingsDialog(
                         text = "ex01",
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 16.dp, end = 28.dp)
-                    )
-
-                    NavigationDrawerItem(
-                        label = { Text(if (effectiveDarkTheme) "Light Theme" else "Dark Theme") },
-                        icon = {
-                            Icon(
-                                imageVector = if (effectiveDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
-                                contentDescription = null
-                            )
-                        },
-                        selected = false,
-                        onClick = { onThemeModeSelected(nextThemeMode) },
-                        modifier = Modifier.padding(horizontal = 12.dp)
                     )
 
                     NavigationDrawerItem(
