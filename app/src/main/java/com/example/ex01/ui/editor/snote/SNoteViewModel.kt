@@ -1,4 +1,4 @@
-package com.example.ex01.ui.editor
+package com.example.ex01.ui.editor.snote
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.input.TextFieldValue

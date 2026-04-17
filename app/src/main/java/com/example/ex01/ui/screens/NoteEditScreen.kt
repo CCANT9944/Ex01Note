@@ -3,6 +3,7 @@ package com.example.ex01.ui.screens
 import com.example.ex01.*
 import com.example.ex01.data.*
 import com.example.ex01.ui.editor.*
+import com.example.ex01.ui.editor.snote.*
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
