@@ -95,6 +95,10 @@ fun SNoteEditor(
 
     var pageHeightPx by remember { mutableFloatStateOf(0f) }
     var pageHeightDp by remember { mutableStateOf(0.dp) }
+    var currentCanvasWidthPx by remember { mutableFloatStateOf(0f) }
+    var currentDensity = 1f
+    var activeTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var needsAutoCommitAfterPaste by remember { mutableStateOf(false) }
 
 
 
@@ -212,14 +216,70 @@ fun SNoteEditor(
             if (activeTextValue.text.isNotBlank()) {
                 val cVal = Color(currentColorValue.toULong())
                 val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                drawingLines.add(
-                    DrawingLine(
-                        points = listOf(activeTextInputPosition!!),
-                        color = chosenColor,
-                        strokeWidth = currentTextSize,
-                        text = activeTextValue.text
+                // --- TEXT PAGINATION ALGORITHM ---
+                val startX = activeTextInputPosition!!.x
+                val startY = activeTextInputPosition!!.y
+                val fullText = activeTextValue.text
+
+                if (activeTextLayoutResult != null && pageHeightPx > 0f) {
+                    val layRes = activeTextLayoutResult!!
+                    var currentBlockStartIdx = 0
+                    var currentBlockY = startY
+                    var cumulativeGapOffset = 0f
+
+                    for (i in 0 until layRes.lineCount) {
+                        val virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
+                        val virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
+                        val targetPage = kotlin.math.floor(virtualTop / pageHeightPx).toInt()
+                        val pageBottom = (targetPage + 1) * pageHeightPx - (24f * currentDensity)
+
+                        if (virtualBottom > pageBottom) {
+                            if (i > 0) {
+                                val endIdx = layRes.getLineEnd(i - 1)
+                                if (endIdx > currentBlockStartIdx) {
+                                    drawingLines.add(
+                                        DrawingLine(
+                                            points = listOf(Offset(startX, currentBlockY)),
+                                            color = chosenColor,
+                                            strokeWidth = currentTextSize,
+                                            text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r')
+                                        )
+                                    )
+                                }
+                                currentBlockStartIdx = layRes.getLineStart(i)
+                            }
+                            
+                            val nxtPage = targetPage + 1
+                            var newBlockY = nxtPage * pageHeightPx + (32f * currentDensity)
+                            val rowHeight = TEXT_LARGE * 1.2f
+                            newBlockY = kotlin.math.ceil(newBlockY / rowHeight) * rowHeight
+                            
+                            cumulativeGapOffset += (newBlockY - virtualTop)
+                            currentBlockY = newBlockY
+                        }
+                    }
+                    if (currentBlockStartIdx < fullText.length) {
+                        drawingLines.add(
+                            DrawingLine(
+                                points = listOf(Offset(startX, currentBlockY)),
+                                color = chosenColor,
+                                strokeWidth = currentTextSize,
+                                text = fullText.substring(currentBlockStartIdx, fullText.length)
+                            )
+                        )
+                    }
+                } else {
+                    // Fallback block mapping if no precise text layout
+                    drawingLines.add(
+                        DrawingLine(
+                            points = listOf(Offset(startX, startY)),
+                            color = chosenColor,
+                            strokeWidth = currentTextSize,
+                            text = fullText
+                        )
                     )
-                )
+                }
+                // ------------------------------------
                 undoneLines.clear()
             }
             originalHitLine = null
@@ -257,15 +317,16 @@ fun SNoteEditor(
                 .fillMaxWidth()
                 .weight(1f)
                 .padding(16.dp),
-            shadowElevation = 8.dp,
-            shape = RoundedCornerShape(8.dp),
-            color = eraserColor
+            shadowElevation = 0.dp,
+            color = androidx.compose.ui.graphics.Color.Transparent
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val availableHeight = this.maxHeight
                 val availableWidth = this.maxWidth
                 val density = LocalDensity.current
                 val availableWidthPx = with(density) { availableWidth.toPx() }
+                currentCanvasWidthPx = availableWidthPx
+                currentDensity = density.density
 
                 LaunchedEffect(availableHeight) {
                     if (pageHeightDp == 0.dp) {
@@ -286,9 +347,18 @@ fun SNoteEditor(
                                 .fillMaxWidth()
                                 .height(pageHeightDp * pageCount)
                         ) {
-                            // Fill whole background first
-                            drawRect(color = eraserColor, size = size)
-                            drawPageLayout(pageCount, pageHeightPx)
+                            drawRect(color = androidx.compose.ui.graphics.Color(0xFFE5E5E5), size = size)
+                            val pageGap = 24.dp.toPx()
+                            for (i in 0 until pageCount) {
+                                val yStart = i * pageHeightPx
+                                val rectHeight = pageHeightPx - pageGap
+                                drawRoundRect(
+                                    color = eraserColor,
+                                    topLeft = androidx.compose.ui.geometry.Offset(0f, yStart),
+                                    size = androidx.compose.ui.geometry.Size(size.width, rectHeight),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f, 16f)
+                                )
+                            }
                         }
 
                         // Drawing Storkes Layer
@@ -723,6 +793,15 @@ fun SNoteEditor(
                                 val maxTextWidth = availableWidth - xPosDp - 4.dp
                                 Text(
                                     text = line.text,
+                                    onTextLayout = { textLayoutResult ->
+                                        val bottomY = line.points.first().y + textLayoutResult.size.height
+                                        if (pageHeightPx > 0) {
+                                            val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
+                                            if (neededPages > pageCount) {
+                                                pageCount = neededPages
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier
                                         .offset {
                                             IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
@@ -753,7 +832,20 @@ fun SNoteEditor(
                             BasicTextField(
                                 value = activeTextValue,
                                 onValueChange = {
+                                    if (it.text.length - activeTextValue.text.length > 50) {
+                                        needsAutoCommitAfterPaste = true
+                                    }
                                     activeTextValue = it
+                                },
+                                onTextLayout = { textLayoutResult ->
+                                    activeTextLayoutResult = textLayoutResult
+                                    val bottomY = activeTextInputPosition!!.y + textLayoutResult.size.height
+                                    if (pageHeightPx > 0) {
+                                        val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
+                                        if (neededPages > pageCount) {
+                                            pageCount = neededPages
+                                        }
+                                    }
                                 },
                                 modifier = Modifier
                                     .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
@@ -778,7 +870,12 @@ fun SNoteEditor(
                                 cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
                             )
                             LaunchedEffect(activeTextValue.text) {
-                                kotlinx.coroutines.delay(400)
+                                kotlinx.coroutines.delay(100)
+                                if (needsAutoCommitAfterPaste && activeTextLayoutResult != null) {
+                                    needsAutoCommitAfterPaste = false
+                                    commitActiveText()
+                                }
+                                kotlinx.coroutines.delay(300)
                                 commitChanges()
                             }
                             LaunchedEffect(activeTextInputPosition) {
@@ -790,6 +887,24 @@ fun SNoteEditor(
                                     e.printStackTrace()
                                 }
                             }
+                        }
+
+                        // Overlay page numbers
+                        for (i in 0 until pageCount) {
+                            val bottomY = pageHeightDp * (i + 1) - 34.dp
+                            Text(
+                                text = "Page ${i + 1}",
+                                color = androidx.compose.ui.graphics.Color.Gray,
+                                fontSize = 14.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                modifier = Modifier
+                                    .offset(x = availableWidth - 80.dp, y = bottomY)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
                         }
                     }
                 }
@@ -839,50 +954,3 @@ fun SNoteEditor(
         }
     }
 }
-
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageLayout(
-    pageCount: Int,
-    pageHeightPx: Float
-) {
-    // Draw thick visual dividers to make pages look distinct
-    for (i in 1 until pageCount) {
-        val y = i * pageHeightPx
-        drawRect(
-            color = Color.Gray.copy(alpha = 0.3f),
-            topLeft = Offset(0f, y - 8.dp.toPx()),
-            size = Size(size.width, 16.dp.toPx())
-        )
-        // Add a slight shadow/borderline effect
-        drawLine(
-            color = Color.DarkGray,
-            start = Offset(0f, y - 8.dp.toPx()),
-            end = Offset(size.width, y - 8.dp.toPx()),
-            strokeWidth = 1.dp.toPx()
-        )
-        drawLine(
-            color = Color.DarkGray,
-            start = Offset(0f, y + 8.dp.toPx()),
-            end = Offset(size.width, y + 8.dp.toPx()),
-            strokeWidth = 1.dp.toPx()
-        )
-    }
-
-    // Draw page numbers at the bottom right
-    val textSizePx = 14.dp.toPx()
-    val textPaint = android.graphics.Paint().apply {
-        color = android.graphics.Color.GRAY
-        textSize = textSizePx
-        textAlign = android.graphics.Paint.Align.RIGHT
-        isAntiAlias = true
-    }
-    for (i in 0 until pageCount) {
-        val pageBottomY = (i + 1) * pageHeightPx
-        drawContext.canvas.nativeCanvas.drawText(
-            "Page ${i + 1}",
-            size.width - 16.dp.toPx(),
-            pageBottomY - 24.dp.toPx(), // Slightly above the bottom edge
-            textPaint
-        )
-    }
-}
-
