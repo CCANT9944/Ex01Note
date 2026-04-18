@@ -410,12 +410,13 @@ fun SNoteEditor(
                                                             for (lineStr in l.text.split("\n")) {
                                                                 val w = pEst.measureText(lineStr)
                                                                 if (maxTextWidthPx > 0f) {
-                                                                    visualRows += kotlin.math.max(1, kotlin.math.ceil((w / maxTextWidthPx).toDouble()).toInt())
+                                                                    // Add a small buffer factor (0.95) because Compose wraps slightly earlier than pure Canvas measureText
+                                                                    visualRows += kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt())
                                                                 } else {
                                                                     visualRows += 1
                                                                 }
                                                             }
-                                                            val endRow = startRow + visualRows - 1
+                                                            val endRow = startRow + visualRows // Buffered by +1 to guarantee lower bottom bound hits
 
                                                             if (clickedRowIndex in startRow..endRow) {
                                                                 hitIndex = i
@@ -445,11 +446,11 @@ fun SNoteEditor(
                                                         // Fallback logic for hit tapping
                                                         for (lineStr in lines) {
                                                             var w = p.measureText(lineStr)
-                                                            val rowsForThisLine = if (maxTextWidthPx > 0f) kotlin.math.max(1, kotlin.math.ceil((w / maxTextWidthPx).toDouble()).toInt()) else 1
-                                                            val endVisualRowForThisLine = currentVisualRowIdx + rowsForThisLine - 1
+                                                            val rowsForThisLine = if (maxTextWidthPx > 0f) kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt()) else 1
+                                                            val endVisualRowForThisLine = currentVisualRowIdx + rowsForThisLine
 
                                                             if (clickedRowIndex in currentVisualRowIdx..endVisualRowForThisLine) {
-                                                                if (clickedRowIndex == endVisualRowForThisLine && lineStr.isNotEmpty()) {
+                                                                if ((clickedRowIndex == endVisualRowForThisLine || clickedRowIndex == endVisualRowForThisLine - 1) && lineStr.isNotEmpty()) {
                                                                     // Roughly tapped on the last visual chunk of this hard line or a wrapped line.
                                                                     val widths = FloatArray(lineStr.length)
                                                                     p.getTextWidths(lineStr, widths)
