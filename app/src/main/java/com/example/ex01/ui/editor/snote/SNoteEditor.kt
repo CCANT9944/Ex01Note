@@ -98,6 +98,7 @@ fun SNoteEditor(
     var currentCanvasWidthPx by remember { mutableFloatStateOf(0f) }
     var currentDensity = 1f
     var activeTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    val staticTextLayouts = remember { mutableMapOf<DrawingLine, androidx.compose.ui.text.TextLayoutResult>() }
     var needsAutoCommitAfterPaste by remember { mutableStateOf(false) }
 
 
@@ -369,12 +370,16 @@ fun SNoteEditor(
                                 .graphicsLayer(alpha = 0.99f) // Force offscreen layer to support true transparent erasing
                                 .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode, isTextMode, isLassoMode) {
                                     awaitPointerEventScope {
+                                        var textModeDownPos: Offset? = null
                                         while (true) {
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull() ?: continue
 
                                             // Yield touch to other UI components that consumed it first (like tapping the text cursor)
-                                            if (change.isConsumed) continue
+                                            if (change.isConsumed) {
+                                                textModeDownPos = null
+                                                continue
+                                            }
 
                                             val isStylus = change.type == PointerType.Stylus
                                             val isStylusEraser = change.type == PointerType.Eraser
@@ -388,6 +393,80 @@ fun SNoteEditor(
 
                                             if (change.pressed && !change.previousPressed) {
                                                 if (isTextMode) {
+                                                    textModeDownPos = change.position
+                                                }
+                                                if (isLassoMode) {
+                                                    // Handle lasso tool start
+                                                    change.consume()
+                                                    val tapPos = change.position
+                                                    
+                                                    // Determine if tap is inside the current selection bounding box or handle
+                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale)
+                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale)
+
+                                                    if (draggingHandle) {
+                                                        isScalingSelection = true
+                                                    } else if (dragging) {
+                                                        isDraggingSelection = true
+                                                    } else {
+                                                        // Tap outside selection -> clear previous selection and start new lasso
+                                                        if (selectedLines.isNotEmpty()) {
+                                                            commitLassoSelection()
+                                                        }
+                                                        lassoPath = listOf(tapPos)
+                                                    }
+                                                    } else if (!isTextMode && currentPath == null) {
+                                                    commitActiveText()
+                                                    currentPath = listOf(change.position)
+                                                    val actualEraserMode = isStylusEraser || isEraserMode
+                                                    val cVal = Color(currentColorValue.toULong())
+                                                    val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
+                                                    currentProperties = DrawingLine(
+                                                        points = currentPath!!,
+                                                        color = if (actualEraserMode) Color.Unspecified else chosenColor,
+                                                        strokeWidth = if (actualEraserMode) currentEraserThickness else if (isHighlighterMode) currentHighlighterThickness else currentThickness,
+                                                        isEraser = actualEraserMode,
+                                                        isHighlighter = isHighlighterMode
+                                                     )
+                                                 }
+                                            } else if (change.pressed && change.previousPressed) {
+                                                 if (isLassoMode) {
+                                                     change.consume()
+                                                     if (isScalingSelection) {
+                                                         val dx = change.position.x - change.previousPosition.x
+                                                         val dy = change.position.y - change.previousPosition.y
+                                                         // Base scale change off total drag distance out/in
+                                                         val scaleDelta = (dx + dy) / 400f
+                                                         selectionScale = kotlin.math.max(0.1f, selectionScale + scaleDelta)
+                                                     } else if (isDraggingSelection) {
+                                                         val dragAmount = change.position - change.previousPosition
+                                                         selectionDragOffset += dragAmount
+                                                     } else if (lassoPath != null) {
+                                                         lassoPath = lassoPath!! + change.position
+                                                     }
+                                                 } else if (!isTextMode && currentPath != null) {
+                                                     currentPath = currentPath!! + change.position
+                                                 }
+                                            } else if (!change.pressed && change.previousPressed) {
+                                                if (isTextMode) {
+                                                    val downPos = textModeDownPos
+                                                    textModeDownPos = null
+                                                    
+                                                    if (downPos == null) {
+                                                        // Pointer event was consumed (e.g. scroll intercepted it), abort tap processing
+                                                        continue
+                                                    }
+                                                    
+                                                    val dx = change.position.x - downPos.x
+                                                    val dy = change.position.y - downPos.y
+                                                    val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                                                    
+                                                    // If dragged more than 10dp, treat it as a scroll/pan, NOT a text click
+                                                    if (dist > with(density) { 10.dp.toPx() }) {
+                                                        continue
+                                                    }
+
+                                                    // If parent scroll consumed the pointer, we won't get a clean tap here
                                                     change.consume()
                                                     val tapPos = change.position
 
@@ -431,59 +510,13 @@ fun SNoteEditor(
                                                         originalHitIndex = hitIndex
                                                         updatePenColor(hitLine.color.value.toLong())
                                                         activeTextInputPosition = hitLine.points.first()
-                                                        val py = hitLine.points.first().y
-                                                        val startRow = kotlin.math.round(py / rowHeight).toInt()
                                                         val safeText = hitLine.text!! // Keep original newlines
 
-                                                        val p = android.graphics.Paint().apply { textSize = hitLine.strokeWidth }
+                                                        val layRes = staticTextLayouts[hitLine]
                                                         var finalCharIdx = safeText.length
-
-                                                        val maxTextWidthPx = availableWidthPx - hitLine.points.first().x - with(density) { 4.dp.toPx() }
-                                                        val lines = safeText.split("\n")
-                                                        var currentVisualRowIdx = startRow
-                                                        var charIdxOff = 0
-
-                                                        // Fallback logic for hit tapping
-                                                        for (lineStr in lines) {
-                                                            var w = p.measureText(lineStr)
-                                                            val rowsForThisLine = if (maxTextWidthPx > 0f) kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt()) else 1
-                                                            val endVisualRowForThisLine = currentVisualRowIdx + rowsForThisLine
-
-                                                            if (clickedRowIndex in currentVisualRowIdx..endVisualRowForThisLine) {
-                                                                if ((clickedRowIndex == endVisualRowForThisLine || clickedRowIndex == endVisualRowForThisLine - 1) && lineStr.isNotEmpty()) {
-                                                                    // Roughly tapped on the last visual chunk of this hard line or a wrapped line.
-                                                                    val widths = FloatArray(lineStr.length)
-                                                                    p.getTextWidths(lineStr, widths)
-                                                                    val tapDX = tapPos.x - hitLine.points.first().x
-
-                                                                    if (rowsForThisLine > 1) {
-                                                                        // Simplest fallback for soft-wrapped lines: place cursor at end
-                                                                        // to prevent jumping to the very beginning due to wrap offset mismatch.
-                                                                        finalCharIdx = charIdxOff + lineStr.length
-                                                                    } else {
-                                                                        var curX = 0f
-                                                                        var charIdxInLine = lineStr.length
-                                                                        for (i in widths.indices) {
-                                                                            if (tapDX < curX + widths[i] / 2f) {
-                                                                                charIdxInLine = i
-                                                                                break
-                                                                            }
-                                                                            curX += widths[i]
-                                                                        }
-                                                                        if (tapDX < 0) charIdxInLine = 0
-                                                                        else if (tapDX > curX + 20f) charIdxInLine = lineStr.length
-
-                                                                        finalCharIdx = charIdxOff + charIdxInLine
-                                                                    }
-                                                                } else {
-                                                                    // Tapped somewhere on a completely wrapped block.
-                                                                    // Safest interaction model is placing at the end of the full line.
-                                                                    finalCharIdx = charIdxOff + lineStr.length
-                                                                }
-                                                                break
-                                                            }
-                                                            currentVisualRowIdx += rowsForThisLine
-                                                            charIdxOff += lineStr.length + 1 // +1 for '\n'
+                                                        if (layRes != null) {
+                                                            val localOffset = tapPos - hitLine.points.first()
+                                                            finalCharIdx = layRes.getOffsetForPosition(localOffset)
                                                         }
 
                                                         activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
@@ -496,59 +529,6 @@ fun SNoteEditor(
                                                         commitChanges()
                                                     }
                                                 } else if (isLassoMode) {
-                                                    // Handle lasso tool start
-                                                    change.consume()
-                                                    val tapPos = change.position
-                                                    
-                                                    // Determine if tap is inside the current selection bounding box or handle
-                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale)
-                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale)
-
-                                                    if (draggingHandle) {
-                                                        isScalingSelection = true
-                                                    } else if (dragging) {
-                                                        isDraggingSelection = true
-                                                    } else {
-                                                        // Tap outside selection -> clear previous selection and start new lasso
-                                                        if (selectedLines.isNotEmpty()) {
-                                                            commitLassoSelection()
-                                                        }
-                                                        lassoPath = listOf(tapPos)
-                                                    }
-                                                } else if (currentPath == null) {
-                                                    commitActiveText()
-                                                    currentPath = listOf(change.position)
-                                                    val actualEraserMode = isStylusEraser || isEraserMode
-                                                    val cVal = Color(currentColorValue.toULong())
-                                                    val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                                                    currentProperties = DrawingLine(
-                                                        points = currentPath!!,
-                                                        color = if (actualEraserMode) Color.Unspecified else chosenColor,
-                                                        strokeWidth = if (actualEraserMode) currentEraserThickness else if (isHighlighterMode) currentHighlighterThickness else currentThickness,
-                                                        isEraser = actualEraserMode,
-                                                        isHighlighter = isHighlighterMode
-                                                     )
-                                                 }
-                                            } else if (change.pressed && change.previousPressed) {
-                                                 if (isLassoMode) {
-                                                     change.consume()
-                                                     if (isScalingSelection) {
-                                                         val dx = change.position.x - change.previousPosition.x
-                                                         val dy = change.position.y - change.previousPosition.y
-                                                         // Base scale change off total drag distance out/in
-                                                         val scaleDelta = (dx + dy) / 400f
-                                                         selectionScale = kotlin.math.max(0.1f, selectionScale + scaleDelta)
-                                                     } else if (isDraggingSelection) {
-                                                         val dragAmount = change.position - change.previousPosition
-                                                         selectionDragOffset += dragAmount
-                                                     } else if (lassoPath != null) {
-                                                         lassoPath = lassoPath!! + change.position
-                                                     }
-                                                 } else if (!isTextMode && currentPath != null) {
-                                                     currentPath = currentPath!! + change.position
-                                                 }
-                                            } else if (!change.pressed && change.previousPressed) {
-                                                if (isLassoMode) {
                                                     if (isScalingSelection) {
                                                         isScalingSelection = false
                                                     } else if (isDraggingSelection) {
@@ -795,6 +775,7 @@ fun SNoteEditor(
                                 Text(
                                     text = line.text,
                                     onTextLayout = { textLayoutResult ->
+                                        staticTextLayouts[line] = textLayoutResult
                                         val bottomY = line.points.first().y + textLayoutResult.size.height
                                         if (pageHeightPx > 0) {
                                             val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
