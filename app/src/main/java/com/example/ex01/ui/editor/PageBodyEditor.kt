@@ -63,11 +63,19 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.LocalFocusManager
+
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -78,58 +86,35 @@ internal fun PageBodyEditor(
     onSelectedPageIndexChange: (Int) -> Unit,
     onSerializedPagesBodyChange: (String) -> Unit,
 ) {
-    val pageItems = splitNotePages(serializedPagesBody).mapIndexed { i, p -> parseNotePage(p, i) }
-    val pageBodies = pageItems.map { it.body }
-    val safePageIndex = selectedPageIndex.coerceIn(0, pageBodies.lastIndex)
-    val pagerState = rememberPagerState(initialPage = safePageIndex, pageCount = { pageBodies.size })
+    var lastParsedBody by remember { mutableStateOf(serializedPagesBody) }
+    var blocks by remember { mutableStateOf(serializedPagesBody.split("\n\n").toMutableList()) }
+
+    if (serializedPagesBody != lastParsedBody) {
+        lastParsedBody = serializedPagesBody
+        blocks = serializedPagesBody.split("\n\n").toMutableList()
+    }
+
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     var editingPageIndex by remember { mutableStateOf<Int?>(null) }
-    val currentSerializedBody by androidx.compose.runtime.rememberUpdatedState(serializedPagesBody)
+    val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(pageBodies.size) {
-        if (selectedPageIndex > pageBodies.lastIndex) {
-            onSelectedPageIndexChange(pageBodies.lastIndex)
-        }
-    }
+    val activeIndex = remember { mutableIntStateOf(selectedPageIndex.coerceIn(0, maxOf(0, blocks.lastIndex))) }
 
-    LaunchedEffect(selectedPageIndex, pageBodies.size) {
-        val targetPage = selectedPageIndex.coerceIn(0, pageBodies.lastIndex)
-        if (pagerState.currentPage != targetPage) {
-            pagerState.animateScrollToPage(targetPage)
-        }
-    }
-
-    val activeController = pageControllers.getOrPut(safePageIndex) {
+    val activeController = pageControllers.getOrPut(activeIndex.intValue) {
+        val txt = blocks.getOrNull(activeIndex.intValue) ?: ""
         RichTextEditorController(
-            TextFieldValue(
-                pageBodies[safePageIndex],
-                selection = TextRange(pageBodies[safePageIndex].length)
-            )
+            TextFieldValue(txt, selection = TextRange(txt.length))
         )
     }
 
-    fun TextRange.coerceToTextLength(textLength: Int): TextRange {
-        return TextRange(
-            start = start.coerceIn(0, textLength),
-            end = end.coerceIn(0, textLength)
-        )
+    fun commitBlocks() {
+        val newBody = blocks.joinToString("\n\n")
+        lastParsedBody = newBody
+        onSerializedPagesBodyChange(newBody)
     }
 
-    LaunchedEffect(pageBodies[safePageIndex]) {
-        val pageText = pageBodies[safePageIndex]
-        if (activeController.value.text != pageText) {
-            activeController.replaceValue(
-                TextFieldValue(
-                    pageText,
-                    selection = activeController.value.selection.coerceToTextLength(pageText.length)
-                )
-            )
-        }
-    }
-
-    fun commitActivePage() {
-        onSerializedPagesBodyChange(
-            replaceNotePage(currentSerializedBody, safePageIndex, activeController.value.text)
-        )
+    DisposableEffect(Unit) {
+        onDispose { commitBlocks() }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -137,37 +122,35 @@ internal fun PageBodyEditor(
             value = activeController.value,
             canUndo = activeController.canUndo,
             onUndoClick = {
-                if (activeController.undo()) {
-                    commitActivePage()
-                }
+                if (activeController.undo()) commitBlocks()
             },
             onBoldClick = {
                 activeController.toggleBold()
-                commitActivePage()
+                commitBlocks()
             },
             onItalicClick = {
                 activeController.toggleItalic()
-                commitActivePage()
+                commitBlocks()
             },
             onUnderlineClick = {
                 activeController.toggleUnderline()
-                commitActivePage()
+                commitBlocks()
             },
             onStrikethroughClick = {
                 activeController.toggleStrikethrough()
-                commitActivePage()
+                commitBlocks()
             },
             onBulletClick = {
                 activeController.toggleBullet()
-                commitActivePage()
+                commitBlocks()
             },
             onIndentClick = {
                 activeController.indent()
-                commitActivePage()
+                commitBlocks()
             },
             onOutdentClick = {
                 activeController.outdent()
-                commitActivePage()
+                commitBlocks()
             },
             modifier = Modifier.fillMaxWidth()
         )
@@ -179,103 +162,100 @@ internal fun PageBodyEditor(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                itemsIndexed(pageItems) { index, page ->
-                    val selected = index == safePageIndex
+            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) Color.Transparent else MaterialTheme.colorScheme.outline),
-                        modifier = Modifier.combinedClickable(
-                            onClick = { onSelectedPageIndexChange(index) },
-                            onLongClick = { editingPageIndex = index }
-                        )
-                    ) {
-                        Text(
-                            text = "${if (page.name.isBlank()) "Page" else page.name} (${index + 1})",
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
-
-                item {
-                    OutlinedButton(onClick = {
-                        onSerializedPagesBodyChange(appendNotePage(currentSerializedBody))
-                        onSelectedPageIndexChange(pageBodies.size)
-                    }) {
-                        Text("+ Add page")
-                    }
+            LaunchedEffect(listState.isScrollInProgress) {
+                if (listState.isScrollInProgress) {
+                    focusManager.clearFocus()
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (editingPageIndex != null) {
-                val indexToEdit = editingPageIndex!!
-                EditPageDialog(
-                    currentName = pageItems[indexToEdit].name,
-                    canDelete = pageItems.size > 1,
-                    onRename = { newName ->
-                        onSerializedPagesBodyChange(renameNotePage(currentSerializedBody, indexToEdit, newName))
-                        editingPageIndex = null
-                    },
-                    onDelete = {
-                        onSerializedPagesBodyChange(deleteNotePage(currentSerializedBody, indexToEdit))
-                        if (selectedPageIndex > 0 && selectedPageIndex >= indexToEdit) {
-                            onSelectedPageIndexChange(selectedPageIndex - 1)
-                        }
-                        editingPageIndex = null
-                    },
-                    onDismissRequest = { editingPageIndex = null },
-                    canSplit = pageItems[indexToEdit].body.length > 500,
-                    onSplit = {
-                        onSerializedPagesBodyChange(splitLongNotePage(currentSerializedBody, indexToEdit, 500))
-                        editingPageIndex = null
-                    }
-                )
-            }
-
-            HorizontalPager(
-                state = pagerState,
-                userScrollEnabled = false,
-                key = { it },
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            ) { pageIndex ->
-                val pageText = pageBodies[pageIndex]
-                val pageController = pageControllers.getOrPut(pageIndex) {
-                    RichTextEditorController(
-                        TextFieldValue(pageText, selection = TextRange(pageText.length))
-                    )
-                }
-
-                LaunchedEffect(pageText) {
-                    if (pageController.value.text != pageText) {
-                        pageController.replaceValue(
-                            TextFieldValue(
-                                pageText,
-                                selection = pageController.value.selection.coerceToTextLength(pageText.length)
-                            )
+            ) {
+                itemsIndexed(blocks) { index, blockText ->
+                    val blockController = pageControllers.getOrPut(index) {
+                        RichTextEditorController(
+                            TextFieldValue(blockText, selection = TextRange(blockText.length))
                         )
                     }
-                }
 
-                RichTextBodyEditor(
-                    value = pageController.value,
-                    onValueChange = { next ->
-                        pageController.updateValue(next)
-                        onSerializedPagesBodyChange(replaceNotePage(currentSerializedBody, pageIndex, pageController.value.text))
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                    LaunchedEffect(blockText) {
+                        if (blockController.value.text != blockText) {
+                            blockController.replaceValue(
+                                TextFieldValue(
+                                    blockText,
+                                    selection = blockController.value.selection
+                                )
+                            )
+                        }
+                    }
+
+                    LaunchedEffect(blockController.value.text) {
+                        kotlinx.coroutines.delay(400)
+                        if (blockController.value.text != blockText) {
+                            blocks[index] = blockController.value.text
+                            commitBlocks()
+                        }
+                    }
+
+                    RichTextBodyEditor(
+                        value = blockController.value,
+                        onValueChange = { next ->
+                            if (next.text.contains("\n\n")) {
+                                val parts = next.text.split("\n\n", limit = 2)
+                                blockController.updateValue(TextFieldValue(parts[0], TextRange(parts[0].length)))
+                                blocks[index] = parts[0]
+                                blocks.add(index + 1, parts[1])
+                                // shifts subsequent controllers
+                                for (i in blocks.size - 1 downTo index + 1) {
+                                    val old = pageControllers[i - 1]
+                                    if (old != null && i > index + 1) {
+                                        pageControllers[i] = old
+                                    }
+                                }
+                                pageControllers[index + 1] = RichTextEditorController(TextFieldValue(parts[1], TextRange(0)))
+                                setOf(index, index + 1).forEach { activeIndex.intValue = it }
+                                commitBlocks()
+                            } else {
+                                blockController.updateValue(next)
+                                blocks[index] = next.text
+                                // Instant sync not needed due to delay above
+                            }
+                        },
+                        onFocus = {
+                            activeIndex.intValue = index
+                            onSelectedPageIndexChange(index)
+                        },
+                        onBackspaceAtStart = {
+                            if (index > 0) {
+                                val prevText = blocks[index - 1]
+                                val currentText = blockController.value.text
+                                val newIndex = index - 1
+                                blocks[newIndex] = prevText + currentText
+                                blocks.removeAt(index)
+                                
+                                val prevController = pageControllers[newIndex]
+                                prevController?.updateValue(TextFieldValue(blocks[newIndex], selection = TextRange(prevText.length)))
+                                pageControllers.remove(blocks.size) // remove last
+                                
+                                activeIndex.intValue = newIndex
+                                commitBlocks()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                item {
+                    Spacer(
+                        modifier = Modifier
+                            .windowInsetsBottomHeight(WindowInsets.ime)
+                    )
+                }
             }
         }
     }
@@ -286,131 +266,76 @@ internal fun PageBodyEditor(
 private fun RichTextBodyEditor(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
+    onFocus: () -> Unit,
+    onBackspaceAtStart: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bottomRevealMargin = 96.dp
-    val scrollState = rememberScrollState()
-    val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var isFocused by remember { mutableStateOf(false) }
-    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    var resumeRevealTick by remember { mutableIntStateOf(0) }
-    var viewportHeightPx by remember { mutableIntStateOf(0) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val density = LocalDensity.current
+    val textLayoutResult = remember { mutableStateOf<TextLayoutResult?>(null) }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
-    val imeInsets = WindowInsets.ime
-    val imeBottomPx = imeInsets.getBottom(density)
+    val cachedVisualTransformation = remember { richTextVisualTransformation() }
 
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                resumeRevealTick++
-            }
-        }
-
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    suspend fun revealCursor() {
-        val layoutResult = textLayoutResult ?: return
+    LaunchedEffect(isFocused, value.selection) {
+        if (!isFocused) return@LaunchedEffect
+        val layoutResult = textLayoutResult.value ?: return@LaunchedEffect
         val cursorOffset = value.selection.end.coerceIn(0, value.text.length)
-        val transformedCursorOffset = richTextVisualTransformation()
+
+        val transformedCursorOffset = cachedVisualTransformation
             .filter(AnnotatedString(value.text))
             .offsetMapping
             .originalToTransformed(cursorOffset)
             .coerceIn(0, layoutResult.layoutInput.text.text.length)
+
         val cursorRect = layoutResult.getCursorRect(transformedCursorOffset)
-        val bottomRevealMarginPx = with(density) { bottomRevealMargin.toPx() }
-        val visibleHeightPx = (viewportHeightPx - imeBottomPx).coerceAtLeast(0)
-        if (visibleHeightPx > 0) {
-            val targetScroll = (cursorRect.bottom - visibleHeightPx + bottomRevealMarginPx).toInt()
-                .coerceAtLeast(0)
-            if (targetScroll != scrollState.value) {
-                scrollState.animateScrollTo(targetScroll.coerceAtMost(scrollState.maxValue))
-            }
-        }
-        val targetRect = androidx.compose.ui.geometry.Rect(
-            left = cursorRect.left,
-            top = cursorRect.top,
-            right = cursorRect.right,
-            bottom = cursorRect.bottom + bottomRevealMarginPx
-        )
-        bringIntoViewRequester.bringIntoView(targetRect)
+        bringIntoViewRequester.bringIntoView(cursorRect)
     }
 
-    LaunchedEffect(isFocused, value.selection, textLayoutResult) {
-        if (!isFocused) return@LaunchedEffect
-        withFrameNanos { }
-        revealCursor()
-    }
-
-    LaunchedEffect(resumeRevealTick, isFocused, textLayoutResult, imeBottomPx) {
-        if (!isFocused || imeBottomPx == 0) return@LaunchedEffect
-        withFrameNanos { }
-        withFrameNanos { }
-        revealCursor()
-    }
-
-    Column(
+    Box(
         modifier = modifier
-            .onSizeChanged { viewportHeightPx = it.height }
-            .verticalScroll(scrollState)
-            .imePadding()
+            .padding(vertical = 8.dp)
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 16.dp)
-                .heightIn(min = with(density) { (viewportHeightPx.toDp() - 32.dp).coerceAtLeast(0.dp) }),
-            shadowElevation = 8.dp,
-            shape = RoundedCornerShape(4.dp),
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ) {
-            Box(
+        BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                visualTransformation = cachedVisualTransformation,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp)
-            ) {
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    visualTransformation = richTextVisualTransformation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .bringIntoViewRequester(bringIntoViewRequester)
-                        .onFocusChanged {
-                            if (it.isFocused && !isFocused) {
-                                resumeRevealTick++
-                            }
-                            isFocused = it.isFocused
-                        },
-                    onTextLayout = { textLayoutResult = it },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
-                    decorationBox = { innerTextField ->
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            if (value.text.isBlank()) {
-                                Text(
-                                    text = "Write your note",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            innerTextField()
-                        }
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(bringIntoViewRequester)
+                    .onFocusChanged {
+                        isFocused = it.isFocused
+                        if (it.isFocused) onFocus()
                     }
-                )
-            }
-        }
-        Spacer(
-            modifier = Modifier.height(
-                bottomRevealMargin + with(density) { imeBottomPx.toDp() }
+                    .onKeyEvent { keyEvent ->
+                        if (keyEvent.key == Key.Backspace &&
+                            keyEvent.type == KeyEventType.KeyDown) {
+                            if (value.selection.start == 0 && value.selection.end == 0) {
+                                onBackspaceAtStart()
+                                return@onKeyEvent true
+                            }
+                        }
+                        false
+                    },
+                onTextLayout = { result ->
+                    textLayoutResult.value = result
+                },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (value.text.isBlank()) {
+                            Text(
+                                text = "...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
             )
-        )
-    }
+        }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

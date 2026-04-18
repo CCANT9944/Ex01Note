@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -97,8 +98,8 @@ fun ChecklistEditor(
         revealChecklistEndRequested = true
     }
 
-    LaunchedEffect(imeBottomPx, addItemIsFocused, items.size, pendingAddedItemCount, revealChecklistEndRequested) {
-        if (!revealChecklistEndRequested || !addItemIsFocused || imeBottomPx <= 0) {
+    LaunchedEffect(items.size, pendingAddedItemCount, revealChecklistEndRequested) {
+        if (!revealChecklistEndRequested) {
             return@LaunchedEffect
         }
 
@@ -115,13 +116,13 @@ fun ChecklistEditor(
         revealChecklistEndRequested = false
     }
 
-    LaunchedEffect(imeBottomPx, addItemIsFocused) {
-        if (addItemIsFocused && imeBottomPx > 0) {
-            revealChecklistEndRequested = true
+    LaunchedEffect(addItemIsFocused, imeBottomPx) {
+        if (addItemIsFocused && items.isNotEmpty()) {
+            listState.scrollToItem(items.lastIndex)
         }
     }
 
-    Column(modifier = modifier) {
+    Column(modifier = modifier.imePadding()) {
         Box(modifier = Modifier.weight(1f)) {
             LazyColumn(
                 state = listState,
