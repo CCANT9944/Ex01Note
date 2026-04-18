@@ -73,7 +73,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
                             )
                         ) {
                             Icon(Icons.Default.Create, contentDescription = "Pen", modifier = Modifier.size(20.dp))
@@ -123,7 +124,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isEraserMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (isEraserMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (isEraserMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
                             )
                         ) {
                             Icon(EraserIcon, contentDescription = "Eraser", modifier = Modifier.size(20.dp))
@@ -175,7 +177,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isHighlighterMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (isHighlighterMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (isHighlighterMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
                             )
                         ) {
                             Icon(HighlighterIcon, contentDescription = "Highlighter", modifier = Modifier.size(20.dp))
@@ -227,7 +230,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isTextMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (isTextMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (isTextMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
                             )
                         ) {
                             Icon(TextIcon, contentDescription = "Text", modifier = Modifier.size(20.dp))
@@ -264,7 +268,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isLassoMode) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                containerColor = if (isLassoMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (isLassoMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
                             )
                         ) {
                             Icon(LassoIcon, contentDescription = "Lasso", modifier = Modifier.size(20.dp))
