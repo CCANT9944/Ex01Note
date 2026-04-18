@@ -1,11 +1,14 @@
 ﻿package com.example.ex01.ui.editor.snote
 
+// Trigger IDE analysis
+
 import com.example.ex01.utils.*
 
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -38,7 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.layout
 import android.content.Context
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
@@ -51,6 +57,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SNoteEditor(
     serializedBody: String,
@@ -62,6 +69,7 @@ fun SNoteEditor(
 
     var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_MEDIUM)) }
     val focusRequester = remember { FocusRequester() }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var currentHighlighterThickness by remember { mutableFloatStateOf(prefs.getFloat("highlighter_thickness", HIGHLIGHTER_MEDIUM)) }
     var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", PEN_MEDIUM)) }
     var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", ERASER_MEDIUM)) }
@@ -297,7 +305,7 @@ fun SNoteEditor(
     val eraserColor = MaterialTheme.colorScheme.surface
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
         SNoteToolbar(
             viewModel = viewModel,
             currentColorValue = currentColorValue,
@@ -336,10 +344,12 @@ fun SNoteEditor(
                     }
                 }
 
+                val scrollState = rememberScrollState()
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                 ) {
                     if (pageHeightDp > 0.dp) {
                         // Background & Dividers Layer
@@ -480,26 +490,34 @@ fun SNoteEditor(
                                                     for (i in drawingLines.indices.reversed()) {
                                                         val l = drawingLines[i]
                                                         if (l.text != null && l.points.isNotEmpty()) {
-                                                            val py = l.points.first().y
-                                                            val startRow = kotlin.math.round(py / rowHeight).toInt()
-
-                                                            val maxTextWidthPx = availableWidthPx - l.points.first().x - with(density) { 4.dp.toPx() }
-                                                            val pEst = android.graphics.Paint().apply { textSize = l.strokeWidth }
-                                                            var visualRows = 0
-                                                            for (lineStr in l.text.split("\n")) {
-                                                                val w = pEst.measureText(lineStr)
-                                                                if (maxTextWidthPx > 0f) {
-                                                                    // Add a small buffer factor (0.95) because Compose wraps slightly earlier than pure Canvas measureText
-                                                                    visualRows += kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt())
-                                                                } else {
-                                                                    visualRows += 1
+                                                            val layRes = staticTextLayouts[l]
+                                                            if (layRes != null) {
+                                                                val py = l.points.first().y
+                                                                if (tapPos.y >= py && tapPos.y <= py + layRes.size.height) {
+                                                                    hitIndex = i
+                                                                    break
                                                                 }
-                                                            }
-                                                            val endRow = startRow + visualRows // Buffered by +1 to guarantee lower bottom bound hits
+                                                            } else {
+                                                                val py = l.points.first().y
+                                                                val startRow = kotlin.math.round(py / rowHeight).toInt()
 
-                                                            if (clickedRowIndex in startRow..endRow) {
-                                                                hitIndex = i
-                                                                break
+                                                                val maxTextWidthPx = availableWidthPx - l.points.first().x - with(density) { 4.dp.toPx() }
+                                                                val pEst = android.graphics.Paint().apply { textSize = l.strokeWidth }
+                                                                var visualRows = 0
+                                                                for (lineStr in l.text.split("\n")) {
+                                                                    val w = pEst.measureText(lineStr)
+                                                                    if (maxTextWidthPx > 0f) {
+                                                                        visualRows += kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt())
+                                                                    } else {
+                                                                        visualRows += 1
+                                                                    }
+                                                                }
+                                                                val endRow = startRow + visualRows
+
+                                                                if (clickedRowIndex in startRow..endRow) {
+                                                                    hitIndex = i
+                                                                    break
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -810,58 +828,107 @@ fun SNoteEditor(
                             val cVal = Color(currentColorValue.toULong())
                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
                             val xPosDp = with(LocalDensity.current) { activeTextInputPosition!!.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { activeTextInputPosition!!.y.toDp() }
                             val maxTextWidth = availableWidth - xPosDp - 4.dp
-                            BasicTextField(
-                                value = activeTextValue,
-                                onValueChange = {
-                                    if (it.text.length - activeTextValue.text.length > 50) {
-                                        needsAutoCommitAfterPaste = true
-                                    }
-                                    activeTextValue = it
-                                },
-                                onTextLayout = { textLayoutResult ->
-                                    activeTextLayoutResult = textLayoutResult
-                                    val bottomY = activeTextInputPosition!!.y + textLayoutResult.size.height
-                                    if (pageHeightPx > 0) {
-                                        val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
-                                        if (neededPages > pageCount) {
-                                            pageCount = neededPages
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .offset { IntOffset(kotlin.math.round(activeTextInputPosition!!.x).toInt(), kotlin.math.round(activeTextInputPosition!!.y).toInt()) }
-                                    .widthIn(max = maxTextWidth)
-                                    .focusRequester(focusRequester)
-                                    .background(Color.Transparent),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                    autoCorrectEnabled = false
-                                ),
-                                textStyle = androidx.compose.ui.text.TextStyle(
-                                    color = chosenColor,
-                                    fontSize = with(LocalDensity.current) { currentTextSize.toSp() },
-                                    lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
-                                    lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                                        alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                                        trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
-                                    ),
-                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                        includeFontPadding = false
+
+                            Column {
+                                Spacer(modifier = Modifier.height(yPosDp))
+                                Row {
+                                    Spacer(modifier = Modifier.width(xPosDp))
+                                    BasicTextField(
+                                        value = activeTextValue,
+                                        onValueChange = {
+                                            if (it.text.length - activeTextValue.text.length > 50) {
+                                                needsAutoCommitAfterPaste = true
+                                            }
+                                            activeTextValue = it
+                                        },
+                                        onTextLayout = { textLayoutResult ->
+                                            activeTextLayoutResult = textLayoutResult
+                                            val bottomY = activeTextInputPosition!!.y + textLayoutResult.size.height
+                                            if (pageHeightPx > 0) {
+                                                val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
+                                                if (neededPages > pageCount) {
+                                                    pageCount = neededPages
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .bringIntoViewRequester(bringIntoViewRequester)
+                                            .widthIn(max = maxTextWidth)
+                                            .focusRequester(focusRequester)
+                                            .background(Color.Transparent),
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                            autoCorrectEnabled = false
+                                        ),
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            color = chosenColor,
+                                            fontSize = with(LocalDensity.current) { currentTextSize.toSp() },
+                                            lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
+                                            lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                                alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                                trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                            ),
+                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                includeFontPadding = false
+                                            )
+                                        ),
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
                                     )
-                                ),
-                                cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
-                            )
-                            LaunchedEffect(activeTextValue.text) {
-                                kotlinx.coroutines.delay(100)
+                                }
+                            }
+
+                            LaunchedEffect(activeTextInputPosition, activeTextLayoutResult, availableHeight) {
+                                // Trigger scroll whenever position is initially clicked and layout is ready
+                                if (activeTextLayoutResult != null) {
+                                    kotlinx.coroutines.delay(50) // Brief delay to let IME padding settle
+                                    try {
+                                        val cursorOffset = activeTextValue.selection.end.coerceIn(0, activeTextLayoutResult!!.layoutInput.text.text.length)
+                                        val cursorRect = activeTextLayoutResult!!.getCursorRect(cursorOffset)
+                                        val absoluteCursorTop = activeTextInputPosition!!.y + cursorRect.top - 60f
+                                        val absoluteCursorBottom = activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                        val viewportTop = scrollState.value.toFloat()
+                                        val currentViewportHeight = with(density) { availableHeight.toPx() }
+                                        val viewportBottom = viewportTop + currentViewportHeight
+
+                                        if (absoluteCursorBottom > viewportBottom) {
+                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                        } else if (absoluteCursorTop < viewportTop) {
+                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                        }
+                                    } catch (e: Exception) {}
+                                }
+                            }
+
+                            LaunchedEffect(activeTextValue.text, activeTextValue.selection, availableHeight) {
+                                kotlinx.coroutines.delay(10)
                                 if (needsAutoCommitAfterPaste && activeTextLayoutResult != null) {
                                     needsAutoCommitAfterPaste = false
                                     commitActiveText()
                                 }
+                                activeTextLayoutResult?.let {
+                                    try {
+                                        val cursorOffset = activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
+                                        val cursorRect = it.getCursorRect(cursorOffset)
+                                        val absoluteCursorTop = activeTextInputPosition!!.y + cursorRect.top - 60f
+                                        val absoluteCursorBottom = activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                        val viewportTop = scrollState.value.toFloat()
+                                        val currentViewportHeight = with(density) { availableHeight.toPx() }
+                                        val viewportBottom = viewportTop + currentViewportHeight
+
+                                        if (absoluteCursorBottom > viewportBottom) {
+                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                        } else if (absoluteCursorTop < viewportTop) {
+                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                        }
+                                    } catch (e: Exception) {}
+                                }
                                 kotlinx.coroutines.delay(300)
                                 commitChanges()
                             }
+
                             LaunchedEffect(activeTextInputPosition) {
-                                kotlinx.coroutines.delay(50)
+                                kotlinx.coroutines.delay(100)
                                 try {
                                     focusRequester.requestFocus()
                                     keyboardController?.show()
@@ -888,13 +955,13 @@ fun SNoteEditor(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
-                    }
-                }
+                } // End if (pageHeightDp > 0.dp)
+                } // End Box(verticalScroll)
 
                 FilledIconButton(
-                    onClick = { 
+                    onClick = {
                         commitActiveText()
-                        pageCount++ 
+                        pageCount++
                     },
                     modifier = Modifier
                         .align(androidx.compose.ui.Alignment.BottomStart)
@@ -906,7 +973,7 @@ fun SNoteEditor(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add Page")
                 }
-            }
+            } // End BoxWithConstraints
         }
 
         if (showClearWarning) {
