@@ -30,4 +30,6 @@ class SNoteViewModel : ViewModel() {
     var initialLoadDone by mutableStateOf(false)
     var originalHitLine by mutableStateOf<DrawingLine?>(null)
     var originalHitIndex by mutableIntStateOf(-1)
+
+    var triggerAddPage by mutableStateOf(false)
 }

@@ -39,9 +39,15 @@ fun SNoteToolbar(
     val strokeColor = MaterialTheme.colorScheme.onSurface
     val eraserColor = MaterialTheme.colorScheme.surface
     val primaryColor = MaterialTheme.colorScheme.primary
+
+    val toolbarBgColor = Color.DarkGray
+    val activeModeColor = Color(0xFF4CAF50) // Material Green
+    val iconColor = Color.White
+    val dividerColor = Color.White.copy(alpha = 0.3f)
+
         Surface(
             modifier = Modifier.fillMaxWidth().zIndex(1f),
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            color = toolbarBgColor,
             shadowElevation = 6.dp
         ) {
             Row(
@@ -73,8 +79,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                contentColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
+                                containerColor = if (!isEraserMode && !isHighlighterMode && !isTextMode && !isLassoMode) activeModeColor else Color.Transparent,
+                                contentColor = iconColor
                             )
                         ) {
                             Icon(Icons.Default.Create, contentDescription = "Pen", modifier = Modifier.size(20.dp))
@@ -124,8 +130,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isEraserMode) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                contentColor = if (isEraserMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
+                                containerColor = if (isEraserMode) activeModeColor else Color.Transparent,
+                                contentColor = iconColor
                             )
                         ) {
                             Icon(EraserIcon, contentDescription = "Eraser", modifier = Modifier.size(20.dp))
@@ -177,8 +183,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isHighlighterMode) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                contentColor = if (isHighlighterMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
+                                containerColor = if (isHighlighterMode) activeModeColor else Color.Transparent,
+                                contentColor = iconColor
                             )
                         ) {
                             Icon(HighlighterIcon, contentDescription = "Highlighter", modifier = Modifier.size(20.dp))
@@ -230,8 +236,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isTextMode) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                contentColor = if (isTextMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
+                                containerColor = if (isTextMode) activeModeColor else Color.Transparent,
+                                contentColor = iconColor
                             )
                         ) {
                             Icon(TextIcon, contentDescription = "Text", modifier = Modifier.size(20.dp))
@@ -268,8 +274,8 @@ fun SNoteToolbar(
                             },
                             modifier = Modifier.size(38.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isLassoMode) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                contentColor = if (isLassoMode) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current
+                                containerColor = if (isLassoMode) activeModeColor else Color.Transparent,
+                                contentColor = iconColor
                             )
                         ) {
                             Icon(LassoIcon, contentDescription = "Lasso", modifier = Modifier.size(20.dp))
@@ -317,7 +323,7 @@ fun SNoteToolbar(
                             .padding(horizontal = 4.dp)
                             .height(20.dp)
                             .width(1.dp)
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                            .background(dividerColor)
                     )
 
                     IconButton(
@@ -339,7 +345,11 @@ fun SNoteToolbar(
                             }
                         },
                         modifier = Modifier.size(38.dp),
-                        enabled = drawingLines.isNotEmpty() || activeTextInputPosition != null
+                        enabled = drawingLines.isNotEmpty() || activeTextInputPosition != null,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = iconColor,
+                            disabledContentColor = iconColor.copy(alpha = 0.5f)
+                        )
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo", modifier = Modifier.size(20.dp))
                     }
@@ -353,7 +363,11 @@ fun SNoteToolbar(
                             }
                         },
                         modifier = Modifier.size(38.dp),
-                        enabled = undoneLines.isNotEmpty()
+                        enabled = undoneLines.isNotEmpty(),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = iconColor,
+                            disabledContentColor = iconColor.copy(alpha = 0.5f)
+                        )
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo", modifier = Modifier.size(20.dp))
                     }
@@ -368,7 +382,7 @@ fun SNoteToolbar(
                             .padding(horizontal = 4.dp)
                             .height(20.dp)
                             .width(1.dp)
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                            .background(dividerColor)
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     TextButton(

@@ -307,6 +307,14 @@ fun SNoteEditor(
     val eraserColor = MaterialTheme.colorScheme.surface
     val primaryColor = MaterialTheme.colorScheme.primary
 
+    LaunchedEffect(triggerAddPage) {
+        if (triggerAddPage) {
+            commitActiveText()
+            pageCount++
+            triggerAddPage = false
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().imePadding()) {
         SNoteToolbar(
             viewModel = viewModel,
@@ -1023,22 +1031,6 @@ fun SNoteEditor(
                         }
                 } // End if (pageHeightDp > 0.dp)
                 } // End Box(verticalScroll)
-
-                FilledIconButton(
-                    onClick = {
-                        commitActiveText()
-                        pageCount++
-                    },
-                    modifier = Modifier
-                        .align(androidx.compose.ui.Alignment.BottomStart)
-                        .padding(16.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Page")
-                }
             } // End BoxWithConstraints
         }
 

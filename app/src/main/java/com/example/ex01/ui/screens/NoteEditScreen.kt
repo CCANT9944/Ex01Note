@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +56,7 @@ fun NoteEditScreen(
     val note by viewModel.getNote(noteId).collectAsStateWithLifecycle(initialValue = null)
     val items by viewModel.getItems(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     val showBodyEditor = note?.kind == NoteKinds.FREE_TEXT
+    val sNoteViewModel: com.example.ex01.ui.editor.snote.SNoteViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
     var isTransitionFinished by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -82,6 +87,7 @@ fun NoteEditScreen(
     var newItemText by rememberSaveable(noteId) { mutableStateOf("") }
 
     var isSaving by remember { mutableStateOf(false) }
+    var showSNoteMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id, note?.title, note?.body, showBodyEditor) {
         val currentNote = note
@@ -160,6 +166,27 @@ fun NoteEditScreen(
                     IconButton(onClick = handleBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    if (noteResolved && note?.kind == NoteKinds.SNOTE) {
+                        Box {
+                            IconButton(onClick = { showSNoteMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(
+                                expanded = showSNoteMenu,
+                                onDismissRequest = { showSNoteMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Add Page") },
+                                    onClick = {
+                                        sNoteViewModel.triggerAddPage = true
+                                        showSNoteMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             )
         }
@@ -197,6 +224,7 @@ fun NoteEditScreen(
                 }
             } else if (note?.kind == NoteKinds.SNOTE) {
                 SNoteEditor(
+                    viewModel = sNoteViewModel,
                     serializedBody = serializedPagesBody,
                     onSerializedBodyChange = { serializedPagesBody = it }
                 )
