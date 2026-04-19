@@ -16,11 +16,12 @@ fun isPointInSelectionBounds(
     var maxY = Float.MIN_VALUE
     selectedLines.forEach { l ->
         if (l.isEraser) return@forEach
+        val halfStroke = l.strokeWidth / 2f
         l.points.forEach { pt ->
-            if (pt.x < minX) minX = pt.x
-            if (pt.y < minY) minY = pt.y
-            if (pt.x > maxX) maxX = pt.x
-            if (pt.y > maxY) maxY = pt.y
+            if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+            if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+            if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+            if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
         }
     }
 
@@ -50,11 +51,12 @@ fun isPointInScaleHandle(
     var maxY = Float.MIN_VALUE
     selectedLines.forEach { l ->
         if (l.isEraser) return@forEach
+        val halfStroke = l.strokeWidth / 2f
         l.points.forEach { pt ->
-            if (pt.x < minX) minX = pt.x
-            if (pt.y < minY) minY = pt.y
-            if (pt.x > maxX) maxX = pt.x
-            if (pt.y > maxY) maxY = pt.y
+            if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+            if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+            if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+            if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
         }
     }
     val cX = (minX + maxX) / 2f

@@ -137,11 +137,12 @@ fun SNoteEditor(
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
                 if (l.isEraser) return@forEach
+                val halfStroke = l.strokeWidth / 2f
                 l.points.forEach { pt ->
-                    if (pt.x < minX) minX = pt.x
-                    if (pt.y < minY) minY = pt.y
-                    if (pt.x > maxX) maxX = pt.x
-                    if (pt.y > maxY) maxY = pt.y
+                    if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                    if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                    if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                    if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
                 }
             }
             val cX = (minX + maxX) / 2f
@@ -183,11 +184,12 @@ fun SNoteEditor(
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
                 if (l.isEraser) return@forEach
+                val halfStroke = l.strokeWidth / 2f
                 l.points.forEach { pt ->
-                    if (pt.x < minX) minX = pt.x
-                    if (pt.y < minY) minY = pt.y
-                    if (pt.x > maxX) maxX = pt.x
-                    if (pt.y > maxY) maxY = pt.y
+                    if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                    if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                    if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                    if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
                 }
             }
             val cX = (minX + maxX) / 2f
@@ -381,6 +383,7 @@ fun SNoteEditor(
                                 .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode, isTextMode, isLassoMode) {
                                     awaitPointerEventScope {
                                         var textModeDownPos: Offset? = null
+                                        var dragStartOffset = Offset.Zero
                                         while (true) {
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull() ?: continue
@@ -402,6 +405,15 @@ fun SNoteEditor(
                                             }
 
                                             if (change.pressed && !change.previousPressed) {
+                                                // Prevent starting drawing or text inside the page gap
+                                                if (pageHeightPx > 0f) {
+                                                    val relY = change.position.y % pageHeightPx
+                                                    val gapPx = 24f * currentDensity
+                                                    if (relY > pageHeightPx - gapPx) {
+                                                        continue
+                                                    }
+                                                }
+
                                                 if (isTextMode) {
                                                     textModeDownPos = change.position
                                                 }
@@ -418,6 +430,7 @@ fun SNoteEditor(
                                                         isScalingSelection = true
                                                     } else if (dragging) {
                                                         isDraggingSelection = true
+                                                        dragStartOffset = selectionDragOffset
                                                     } else {
                                                         // Tap outside selection -> clear previous selection and start new lasso
                                                         if (selectedLines.isNotEmpty()) {
@@ -455,9 +468,18 @@ fun SNoteEditor(
                                                          lassoPath = lassoPath!! + change.position
                                                      }
                                                  } else if (!isTextMode && currentPath != null) {
-                                                     currentPath = currentPath!! + change.position
+                                                     val relY = change.position.y % pageHeightPx
+                                                     val gapPx = 24f * currentDensity
+                                                     if (pageHeightPx > 0f && relY > pageHeightPx - gapPx) {
+                                                         drawingLines.add(currentProperties.copy(points = currentPath!!))
+                                                         undoneLines.clear()
+                                                         currentPath = null
+                                                         commitChanges()
+                                                     } else {
+                                                         currentPath = currentPath!! + change.position
+                                                     }
                                                  }
-                                            } else if (!change.pressed && change.previousPressed) {
+                                             } else if (!change.pressed && change.previousPressed) {
                                                 if (isTextMode) {
                                                     val downPos = textModeDownPos
                                                     textModeDownPos = null
@@ -551,6 +573,49 @@ fun SNoteEditor(
                                                         isScalingSelection = false
                                                     } else if (isDraggingSelection) {
                                                         isDraggingSelection = false
+                                                        if (selectedLines.isNotEmpty() && pageHeightPx > 0f) {
+                                                            var minY = Float.MAX_VALUE
+                                                            var maxY = Float.MIN_VALUE
+                                                            var minX = Float.MAX_VALUE
+                                                            var maxX = Float.MIN_VALUE
+                                                            selectedLines.forEach { l ->
+                                                                if (!l.isEraser) {
+                                                                    val halfStroke = l.strokeWidth / 2f
+                                                                    l.points.forEach { pt ->
+                                                                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                                                                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                                                                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                                                                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                                                    }
+                                                                }
+                                                            }
+                                                            if (minY <= maxY) {
+                                                                val cY = (minY + maxY) / 2f
+                                                                val cX = (minX + maxX) / 2f
+                                                                val topY = cY + (minY - cY) * selectionScale + selectionDragOffset.y
+                                                                val bottomY = cY + (maxY - cY) * selectionScale + selectionDragOffset.y
+                                                                val leftX = cX + (minX - cX) * selectionScale + selectionDragOffset.x
+                                                                val rightX = cX + (maxX - cX) * selectionScale + selectionDragOffset.x
+                                                                val gapPx = 24f * currentDensity
+                                                                
+                                                                val startPage = kotlin.math.floor(topY / pageHeightPx).toInt()
+                                                                val endPage = kotlin.math.floor(bottomY / pageHeightPx).toInt()
+                                                                
+                                                                var overlapsGap = false
+                                                                if (startPage != endPage) {
+                                                                    overlapsGap = true // Crosses the boundary between pages
+                                                                } else {
+                                                                    val relativeBottom = bottomY % pageHeightPx
+                                                                    if (relativeBottom > pageHeightPx - gapPx) {
+                                                                        overlapsGap = true // Bottom touches the gap
+                                                                    }
+                                                                }
+                                                                
+                                                                if (overlapsGap || topY < 0f || leftX < 0f || rightX > currentCanvasWidthPx) {
+                                                                    selectionDragOffset = dragStartOffset
+                                                                }
+                                                            }
+                                                        }
                                                     } else if (lassoPath != null) {
                                                         // Lasso drawing finished, calculate enclosed lines
                                                         val capturedLassoPath = lassoPath!!
@@ -708,11 +773,12 @@ fun SNoteEditor(
 
                                     selectedLines.forEach { l ->
                                         if (l.isEraser) return@forEach
+                                        val halfStroke = l.strokeWidth / 2f
                                         l.points.forEach { pt ->
-                                            if (pt.x < minX) minX = pt.x
-                                            if (pt.y < minY) minY = pt.y
-                                            if (pt.x > maxX) maxX = pt.x
-                                            if (pt.y > maxY) maxY = pt.y
+                                            if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                                            if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                                            if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                            if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
                                         }
                                     }
                                     val cX = (minX + maxX) / 2f
