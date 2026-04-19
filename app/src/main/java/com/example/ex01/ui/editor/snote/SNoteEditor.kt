@@ -137,12 +137,22 @@ fun SNoteEditor(
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
                 if (l.isEraser) return@forEach
-                val halfStroke = l.strokeWidth / 2f
-                l.points.forEach { pt ->
-                    if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                    if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                    if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                    if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                if (l.text != null && l.points.isNotEmpty()) {
+                    val startPt = l.points.first()
+                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                    if (startPt.x < minX) minX = startPt.x
+                    if (startPt.y < minY) minY = startPt.y
+                    if (startPt.x + tw > maxX) maxX = startPt.x + tw
+                    if (startPt.y + th > maxY) maxY = startPt.y + th
+                } else {
+                    val halfStroke = l.strokeWidth / 2f
+                    l.points.forEach { pt ->
+                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                    }
                 }
             }
             val cX = (minX + maxX) / 2f
@@ -184,12 +194,22 @@ fun SNoteEditor(
             var maxY = Float.MIN_VALUE
             selectedLines.forEach { l ->
                 if (l.isEraser) return@forEach
-                val halfStroke = l.strokeWidth / 2f
-                l.points.forEach { pt ->
-                    if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                    if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                    if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                    if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                if (l.text != null && l.points.isNotEmpty()) {
+                    val startPt = l.points.first()
+                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                    if (startPt.x < minX) minX = startPt.x
+                    if (startPt.y < minY) minY = startPt.y
+                    if (startPt.x + tw > maxX) maxX = startPt.x + tw
+                    if (startPt.y + th > maxY) maxY = startPt.y + th
+                } else {
+                    val halfStroke = l.strokeWidth / 2f
+                    l.points.forEach { pt ->
+                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                    }
                 }
             }
             val cX = (minX + maxX) / 2f
@@ -432,8 +452,14 @@ fun SNoteEditor(
                                                     val tapPos = change.position
                                                     
                                                     // Determine if tap is inside the current selection bounding box or handle
-                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale)
-                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale)
+                                                    // pre-compute text bounds for hit tests
+                                                    val tBounds = selectedLines.filter { it.text != null }.associateWith { 
+                                                        val tw = staticTextLayouts[it]?.size?.width?.toFloat() ?: (it.strokeWidth * 0.6f * it.text!!.length.toFloat())
+                                                        val th = staticTextLayouts[it]?.size?.height?.toFloat() ?: (it.strokeWidth * 1.5f)
+                                                        Pair(tw, th)
+                                                    }
+                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
+                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
 
                                                     if (draggingHandle) {
                                                         isScalingSelection = true
@@ -592,12 +618,22 @@ fun SNoteEditor(
                                                             var maxX = Float.MIN_VALUE
                                                             selectedLines.forEach { l ->
                                                                 if (!l.isEraser) {
-                                                                    val halfStroke = l.strokeWidth / 2f
-                                                                    l.points.forEach { pt ->
-                                                                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                                                                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
-                                                                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                                                                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                                                    if (l.text != null && l.points.isNotEmpty()) {
+                                                                        val startPt = l.points.first()
+                                                                        val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                                                        val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                                                        if (startPt.x < minX) minX = startPt.x
+                                                                        if (startPt.y < minY) minY = startPt.y
+                                                                        if (startPt.x + tw > maxX) maxX = startPt.x + tw
+                                                                        if (startPt.y + th > maxY) maxY = startPt.y + th
+                                                                    } else {
+                                                                        val halfStroke = l.strokeWidth / 2f
+                                                                        l.points.forEach { pt ->
+                                                                            if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                                                                            if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                                                                            if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                                                            if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -653,29 +689,43 @@ fun SNoteEditor(
                                                             }
 
                                                             // Fast precise geometry intersection that mathematically ignores ANY points visually "covered" by subsequent erasers
-                                                            val isSelected = l.points.any { pt ->
-                                                                if (!lassoRect.contains(pt)) return@any false
-                                                                if (!isPointInPolygon(pt, capturedLassoPath)) return@any false
-
-                                                                if (l.text != null) return@any true // Text elements bypass Canvas composite erasers natively
-
-                                                                var pointErased = false
-                                                                for (j in index + 1 until drawingLines.size) {
-                                                                    val e = drawingLines[j]
-                                                                    if (e.isEraser) {
-                                                                        val rSq = e.strokeWidth * e.strokeWidth // Broad radius bounds to buffer interpolation
-                                                                        for (ept in e.points) {
-                                                                            val dx = pt.x - ept.x
-                                                                            val dy = pt.y - ept.y
-                                                                            if (dx * dx + dy * dy <= rSq) {
-                                                                                pointErased = true
-                                                                                break
+                                                            val isSelected = if (l.text != null && l.points.isNotEmpty()) {
+                                                                val startPt = l.points.first()
+                                                                val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                                                val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                                                val cX = startPt.x + tw / 2f
+                                                                val cY = startPt.y + th / 2f
+                                                                val ptsToCheck = listOf(
+                                                                    startPt,
+                                                                    Offset(startPt.x + tw, startPt.y),
+                                                                    Offset(startPt.x, startPt.y + th),
+                                                                    Offset(startPt.x + tw, startPt.y + th),
+                                                                    Offset(cX, cY)
+                                                                )
+                                                                ptsToCheck.any { p -> lassoRect.contains(p) && isPointInPolygon(p, capturedLassoPath) }
+                                                            } else {
+                                                                l.points.any { pt ->
+                                                                    if (!lassoRect.contains(pt)) return@any false
+                                                                    if (!isPointInPolygon(pt, capturedLassoPath)) return@any false
+                                                                    if (l.text != null) return@any true
+                                                                    var pointErased = false
+                                                                    for (j in index + 1 until drawingLines.size) {
+                                                                        val e = drawingLines[j]
+                                                                        if (e.isEraser) {
+                                                                            val rSq = e.strokeWidth * e.strokeWidth
+                                                                            for (ept in e.points) {
+                                                                                val dx = pt.x - ept.x
+                                                                                val dy = pt.y - ept.y
+                                                                                if (dx * dx + dy * dy <= rSq) {
+                                                                                    pointErased = true
+                                                                                    break
+                                                                                }
                                                                             }
+                                                                            if (pointErased) break
                                                                         }
                                                                     }
-                                                                    if (pointErased) break
+                                                                    !pointErased
                                                                 }
-                                                                !pointErased
                                                             }
 
                                                             if (isSelected) {
@@ -786,12 +836,22 @@ fun SNoteEditor(
 
                                     selectedLines.forEach { l ->
                                         if (l.isEraser) return@forEach
-                                        val halfStroke = l.strokeWidth / 2f
-                                        l.points.forEach { pt ->
-                                            if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                                            if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                                            if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                                            if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                                        if (l.text != null && l.points.isNotEmpty()) {
+                                            val startPt = l.points.first()
+                                            val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                            val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                            if (startPt.x < minX) minX = startPt.x
+                                            if (startPt.y < minY) minY = startPt.y
+                                            if (startPt.x + tw > maxX) maxX = startPt.x + tw
+                                            if (startPt.y + th > maxY) maxY = startPt.y + th
+                                        } else {
+                                            val halfStroke = l.strokeWidth / 2f
+                                            l.points.forEach { pt ->
+                                                if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                                                if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                                                if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                                if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                                            }
                                         }
                                     }
                                     val cX = (minX + maxX) / 2f
@@ -899,6 +959,67 @@ fun SNoteEditor(
                                         )
                                     )
                                 )
+                            }
+                        }
+
+                        // Render Selected Text dynamically while dragging/scaling
+                        if (selectedLines.isNotEmpty()) {
+                            var minX = Float.MAX_VALUE
+                            var minY = Float.MAX_VALUE
+                            var maxX = Float.MIN_VALUE
+                            var maxY = Float.MIN_VALUE
+                            selectedLines.forEach { l ->
+                                if (l.isEraser) return@forEach
+                                if (l.text != null && l.points.isNotEmpty()) {
+                                    val startPt = l.points.first()
+                                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                    if (startPt.x < minX) minX = startPt.x
+                                    if (startPt.y < minY) minY = startPt.y
+                                    if (startPt.x + tw > maxX) maxX = startPt.x + tw
+                                    if (startPt.y + th > maxY) maxY = startPt.y + th
+                                } else {
+                                    val halfStroke = l.strokeWidth / 2f
+                                    l.points.forEach { pt ->
+                                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
+                                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
+                                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
+                                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
+                                    }
+                                }
+                            }
+                            val cX = if (minX < maxX) (minX + maxX) / 2f else 0f
+                            val cY = if (minY < maxY) (minY + maxY) / 2f else 0f
+
+                            selectedLines.forEach { line ->
+                                if (line.text != null && line.points.isNotEmpty()) {
+                                    val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
+                                    val pt = line.points.first()
+                                    val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
+                                    val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+                                    
+                                    val xPosDp = with(LocalDensity.current) { pX.coerceAtLeast(0f).toDp() }
+                                    val maxTextWidth = (availableWidth - xPosDp - 4.dp).coerceAtLeast(10.dp)
+                                    
+                                    Text(
+                                        text = line.text,
+                                        modifier = Modifier
+                                            .offset { IntOffset(kotlin.math.round(pX).toInt(), kotlin.math.round(pY).toInt()) }
+                                            .widthIn(max = maxTextWidth),
+                                        style = androidx.compose.ui.text.TextStyle(
+                                            color = activeLineColor.copy(alpha = 0.7f),
+                                            fontSize = with(LocalDensity.current) { (line.strokeWidth * selectionScale).coerceAtLeast(1f).toSp() },
+                                            lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f * selectionScale).coerceAtLeast(1f).toSp() },
+                                            lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                                alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                                trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                            ),
+                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                includeFontPadding = false
+                                            )
+                                        )
+                                    )
+                                }
                             }
                         }
 
