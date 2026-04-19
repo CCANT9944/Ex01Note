@@ -103,7 +103,8 @@ fun NoteCard(
                     onClick = onClick,
                     onLongClick = onMenuClick
                 ),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 Column(modifier = Modifier.fillMaxSize().padding(end = 4.dp, start = 4.dp)) {
@@ -224,4 +225,3 @@ fun NoteItemRow(
         }
     }
 }
-
