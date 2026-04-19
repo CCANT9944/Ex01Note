@@ -392,6 +392,7 @@ fun SNoteEditor(
                                     awaitPointerEventScope {
                                         var textModeDownPos: Offset? = null
                                         var dragStartOffset = Offset.Zero
+                                        var dragStartScale = 1f
                                         while (true) {
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull() ?: continue
@@ -436,9 +437,12 @@ fun SNoteEditor(
 
                                                     if (draggingHandle) {
                                                         isScalingSelection = true
+                                                        dragStartScale = selectionScale
+                                                        dragStartOffset = selectionDragOffset
                                                     } else if (dragging) {
                                                         isDraggingSelection = true
                                                         dragStartOffset = selectionDragOffset
+                                                        dragStartScale = selectionScale
                                                     } else {
                                                         // Tap outside selection -> clear previous selection and start new lasso
                                                         if (selectedLines.isNotEmpty()) {
@@ -577,10 +581,10 @@ fun SNoteEditor(
                                                         commitChanges()
                                                     }
                                                 } else if (isLassoMode) {
-                                                    if (isScalingSelection) {
-                                                        isScalingSelection = false
-                                                    } else if (isDraggingSelection) {
-                                                        isDraggingSelection = false
+                                                    if (isScalingSelection || isDraggingSelection) {
+                                                        if (isScalingSelection) isScalingSelection = false
+                                                        if (isDraggingSelection) isDraggingSelection = false
+
                                                         if (selectedLines.isNotEmpty() && pageHeightPx > 0f) {
                                                             var minY = Float.MAX_VALUE
                                                             var maxY = Float.MIN_VALUE
@@ -621,6 +625,7 @@ fun SNoteEditor(
                                                                 
                                                                 if (overlapsGap || topY < 0f || leftX < 0f || rightX > currentCanvasWidthPx) {
                                                                     selectionDragOffset = dragStartOffset
+                                                                    selectionScale = dragStartScale
                                                                 }
                                                             }
                                                         }
