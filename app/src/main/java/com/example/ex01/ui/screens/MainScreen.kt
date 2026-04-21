@@ -32,7 +32,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Edit
@@ -123,6 +126,10 @@ fun MainScreen(
     val collapsedFoldersRepo = remember(context) { CollapsedFoldersRepository(context) }
     val collapsedNotesRepo = remember(context) { CollapsedNotesRepository(context) }
     val scope = rememberCoroutineScope()
+
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val isApplyingTheme = remember { mutableStateOf(false) }
+
     LaunchedEffect(folders) {
         folderBounds.keys.retainAll(folders.mapTo(mutableSetOf()) { it.id })
     }
@@ -133,444 +140,512 @@ fun MainScreen(
         }
     }
 
-    Scaffold(
-        topBar = { 
-            HomeTopAppBar(onSettingsClick = { showSettingsDialog = true })
-        },
-        floatingActionButton = {
-            Box {
-                FloatingActionButton(onClick = { showCreateChooser = true }) {
-                    Icon(Icons.Filled.Add, contentDescription = "Create")
-                }
-
-                DropdownMenu(
-                    expanded = showCreateChooser,
-                    onDismissRequest = { showCreateChooser = false },
-                    modifier = Modifier.widthIn(min = 160.dp),
-                    offset = androidx.compose.ui.unit.DpOffset(x = (-16).dp, y = (-8).dp)
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Note") },
-                        leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
-                        onClick = {
-                            showCreateChooser = false
-                            showNoteDialog = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("S-Note") },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                        onClick = {
-                            showCreateChooser = false
-                            showSNoteDialog = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("List") },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = null) },
-                        onClick = {
-                            showCreateChooser = false
-                            showListDialog = true
-                        }
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
-                    DropdownMenuItem(
-                        text = { Text("Folder") },
-                        leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                        onClick = {
-                            showCreateChooser = false
-                            showFolderDialog = true
-                        }
-                    )
-                }
-            }
-        }
-    ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (folders.isEmpty() && displayLists.isEmpty() && displayNotes.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    EmptyStateCard(
-                        title = "No items yet",
-                        message = "Tap the + button to create your first folder, list, or note.",
-                        modifier = Modifier.fillMaxWidth().height(160.dp)
-                    )
-                }
-            } else {
-                gridItems(folders, key = { it.id }) { folder ->
-                    val isCollapsed by collapsedFoldersRepo.isCollapsedFlow(folder.id).collectAsStateWithLifecycle(initialValue = true)
-                    val folderColorValue by folderColorRepo.colorFlow(folder.id).collectAsStateWithLifecycle(initialValue = null)
-                    FolderCard(
-                        folder = folder,
-                        viewModel = viewModel,
-                        onClick = { onFolderClick(folder.id) },
-                        onMenuClick = { folderToActions = folder },
-                        onMenuRename = { folderToRename = folder },
-                        onMenuDelete = { folderToDelete = folder },
-                        onMenuMoveToFolder = { folderToMove = folder },
-                        onMenuChangeColor = { folderToColor = folder },
-                        isCollapsed = isCollapsed,
-                        onMenuCollapse = { scope.launch { collapsedFoldersRepo.setCollapsed(folder.id, !isCollapsed) } },
-                        iconTint = folderColorValue?.let(::Color) ?: MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val windowPos = coordinates.positionInWindow()
-                            folderBounds[folder.id] = androidx.compose.ui.geometry.Rect(
-                                windowPos.x, windowPos.y,
-                                windowPos.x + coordinates.size.width,
-                                windowPos.y + coordinates.size.height
-                            )
-                        }
-                    )
-                }
-
-                if (folders.isNotEmpty() && (displayLists.isNotEmpty() || displayNotes.isNotEmpty())) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
-
-                gridItems(
-                    items = displayLists,
-                    key = { it.id },
-                    span = { GridItemSpan(2) }
-                ) { note ->
-                    var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
-                    var isDragging by remember(note.id) { mutableStateOf(false) }
-                    var globalPosition by remember(note.id) { mutableStateOf(Offset.Zero) }
-
-                    Box(
-                        modifier = Modifier
-                            .onGloballyPositioned { globalPosition = it.positionInWindow() }
-                            .pointerInput(note.id) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { isDragging = true },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        itemOffset += dragAmount
-                                    },
-                                    onDragEnd = {
-                                        val dropPoint = globalPosition + itemOffset
-                                        folderBounds.forEach { (id, rect) ->
-                                            if (rect.contains(dropPoint)) {
-                                                viewModel.moveNoteToFolder(note.id, id)
-                                            }
-                                        }
-                                        isDragging = false
-                                        itemOffset = Offset.Zero
-                                    },
-                                    onDragCancel = {
-                                        isDragging = false
-                                        itemOffset = Offset.Zero
-                                    }
-                                )
-                            }
-                            .offset { IntOffset(itemOffset.x.roundToInt(), itemOffset.y.roundToInt()) }
-                            .zIndex(if (isDragging) 10f else 1f)
-                    ) {
-                        val noteCollapsed by collapsedNotesRepo.isCollapsedFlow(note.id).collectAsStateWithLifecycle(initialValue = true)
-                        NoteCard(
-                            note = note,
-                            viewModel = viewModel,
-                            onClick = { if (!isDragging) onNoteClick(note.id) },
-                            onMenuClick = { noteToActions = note },
-                            onMenuRename = { noteToRename = note },
-                            onMenuExpand = { notePreview = note },
-                            onMenuChangeStyle = { noteToChangeStyle = note },
-                            onMenuDelete = { noteToDelete = note },
-                            onMenuMoveToFolder = { noteToMove = note },
-                            isCollapsed = noteCollapsed,
-                            onMenuCollapse = { scope.launch { collapsedNotesRepo.setCollapsed(note.id, !noteCollapsed) } },
-                            modifier = Modifier.background(
-                                if (isDragging) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                RoundedCornerShape(16.dp)
-                            )
-                        )
-                    }
-                }
-
-                gridItems(
-                    items = displayNotes,
-                    key = { it.id },
-                    span = { GridItemSpan(2) }
-                ) { note ->
-                    var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
-                    var isDragging by remember(note.id) { mutableStateOf(false) }
-                    var globalPosition by remember(note.id) { mutableStateOf(Offset.Zero) }
-
-                    Box(
-                        modifier = Modifier
-                            .onGloballyPositioned { globalPosition = it.positionInWindow() }
-                            .pointerInput(note.id) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { isDragging = true },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        itemOffset += dragAmount
-                                    },
-                                    onDragEnd = {
-                                        val dropPoint = globalPosition + itemOffset
-                                        folderBounds.forEach { (id, rect) ->
-                                            if (rect.contains(dropPoint)) {
-                                                viewModel.moveNoteToFolder(note.id, id)
-                                            }
-                                        }
-                                        isDragging = false
-                                        itemOffset = Offset.Zero
-                                    },
-                                    onDragCancel = {
-                                        isDragging = false
-                                        itemOffset = Offset.Zero
-                                    }
-                                )
-                            }
-                            .offset { IntOffset(itemOffset.x.roundToInt(), itemOffset.y.roundToInt()) }
-                            .zIndex(if (isDragging) 10f else 1f)
-                    ) {
-                        val noteCollapsed by collapsedNotesRepo.isCollapsedFlow(note.id).collectAsStateWithLifecycle(initialValue = true)
-                        NoteCard(
-                            note = note,
-                            viewModel = viewModel,
-                            onClick = { if (!isDragging) onNoteClick(note.id) },
-                            onMenuClick = { noteToActions = note },
-                            onMenuRename = { noteToRename = note },
-                            onMenuExpand = { notePreview = note },
-                            onMenuChangeStyle = null,
-                            onMenuDelete = { noteToDelete = note },
-                            onMenuMoveToFolder = { noteToMove = note },
-                            isCollapsed = noteCollapsed,
-                            onMenuCollapse = { scope.launch { collapsedNotesRepo.setCollapsed(note.id, !noteCollapsed) } },
-                            modifier = Modifier.background(
-                                if (isDragging) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                RoundedCornerShape(16.dp)
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        folderToColor?.let { folder ->
-            val currentColor = folderColorRepo.colorFlow(folder.id).collectAsStateWithLifecycle(initialValue = null).value
-            FolderColorDialog(
-                folderName = folder.name,
-                currentColor = currentColor,
-                onColorSelected = { selected ->
-                    folderColorRepo.setColor(folder.id, selected)
-                    folderToColor = null
-                },
-                onDismissRequest = { folderToColor = null }
-            )
-        }
-
-        folderToActions?.let { folder ->
-            val actionsCollapsed by collapsedFoldersRepo.isCollapsedFlow(folder.id).collectAsStateWithLifecycle(initialValue = true)
-            FolderActionsDialog(
-                folder = folder,
-                isCollapsed = actionsCollapsed,
-                onExpandCollapse = {
-                    scope.launch { collapsedFoldersRepo.setCollapsed(folder.id, !actionsCollapsed) }
-                    folderToActions = null
-                },
-                onRename = {
-                    folderToRename = folder
-                    folderToActions = null
-                },
-                onMoveToFolder = {
-                    folderToMove = folder
-                    folderToActions = null
-                },
-                onChangeColor = {
-                    folderToColor = folder
-                    folderToActions = null
-                },
-                onDelete = {
-                    folderToDelete = folder
-                    folderToActions = null
-                },
-                onDismissRequest = { folderToActions = null }
-            )
-        }
-
-        noteToActions?.let { note ->
-            NoteActionsDialog(
-                note = note,
-                onRename = {
-                    noteToRename = note
-                    noteToActions = null
-                },
-                onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
-                    noteToChangeStyle = note
-                    noteToActions = null
-                } },
-                onMoveToFolder = {
-                    noteToMove = note
-                    noteToActions = null
-                },
-                onDelete = {
-                    noteToDelete = note
-                    noteToActions = null
-                },
-                onDismissRequest = { noteToActions = null }
-            )
-        }
-
-
-
-        CreateItemDialogs(
-            showFolderDialog = showFolderDialog,
-            folderDialogTitle = "New Folder",
-            onCreateFolder = { name -> viewModel.addFolder(name) },
-            onDismissFolderDialog = { showFolderDialog = false },
-            showNoteDialog = showNoteDialog,
-            noteDialogTitle = "New Note",
-            onCreateNote = { title -> viewModel.addNote(title, kind = NoteKinds.FREE_TEXT) },
-            onDismissNoteDialog = { showNoteDialog = false },
-            showSNoteDialog = showSNoteDialog,
-            sNoteDialogTitle = "New S-Note",
-            onCreateSNote = { title -> viewModel.addNote(title, kind = NoteKinds.SNOTE) },
-            onDismissSNoteDialog = { showSNoteDialog = false },
-            showListDialog = showListDialog,
-            listDialogTitle = "New List",
-            onCreateList = { listTitle, listStyle ->
-                viewModel.addNote(
-                    listTitle,
-                    kind = NoteKinds.CHECKLIST,
-                    listStyle = listStyle
-                )
-            },
-            onDismissListDialog = { showListDialog = false }
+    if (isApplyingTheme.value) {
+        AlertDialog(
+            onDismissRequest = { /* Cannot dismiss */ },
+            confirmButton = {},
+            title = { Text("Applying Theme...") },
+            text = { Text("Please wait a moment while the theme is applied.") },
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
         )
+    }
 
-        folderToRename?.let { folder ->
-            var newName by remember { mutableStateOf(folder.name) }
-            TextInputDialog(
-                title = "Rename Folder",
-                value = newName,
-                onValueChange = { newName = it },
-                confirmText = "Rename",
-                onConfirm = {
-                    if (newName.isNotBlank() && newName != folder.name) {
-                        viewModel.updateFolder(folder.copy(name = newName))
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(260.dp)) {
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Trash Bin") },
+                    icon = {
+                        Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null)
+                    },
+                    selected = false,
+                    onClick = {
+                        scope.launch {
+                            drawerState.close()
+                            onOpenTrash()
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                val isDark = currentThemeMode == ThemeMode.DARK
+                NavigationDrawerItem(
+                    label = { Text(if (isDark) "Light Mode" else "Dark Mode") },
+                    icon = {
+                        Icon(imageVector = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode, contentDescription = null)
+                    },
+                    selected = false,
+                    onClick = {
+                        if (!isApplyingTheme.value) {
+                            isApplyingTheme.value = true
+                            scope.launch {
+                                kotlinx.coroutines.delay(100)
+                                themeSettingsRepository.setThemeMode(if (isDark) ThemeMode.LIGHT else ThemeMode.DARK)
+                                kotlinx.coroutines.delay(400)
+                                isApplyingTheme.value = false
+                                drawerState.close()
+                            }
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                HomeTopAppBar(onSettingsClick = { scope.launch { drawerState.open() } })
+            },
+            floatingActionButton = {
+                Box {
+                    FloatingActionButton(onClick = { showCreateChooser = true }) {
+                        Icon(Icons.Filled.Add, contentDescription = "Create")
                     }
-                    folderToRename = null
-                },
-                onDismissRequest = { folderToRename = null }
-            )
-        }
 
-
-        folderToDelete?.let { folder ->
-            ConfirmDialog(
-                title = "Delete Folder",
-                message = "Are you sure you want to delete the folder \"${folder.name}\"?\n\nThe notes inside this folder will also be deleted.",
-                onConfirm = {
-                    viewModel.deleteFolder(folder)
-                    folderToDelete = null
-                },
-                onDismissRequest = { folderToDelete = null },
-                confirmButtonColors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            )
-        }
-
-        noteToDelete?.let { note ->
-            ConfirmDialog(
-                title = "Delete Note",
-                message = "Are you sure you want to delete the note \"${note.title}\"?",
-                onConfirm = {
-                    viewModel.deleteNote(note)
-                    noteToDelete = null
-                },
-                onDismissRequest = { noteToDelete = null },
-                confirmButtonColors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            )
-        }
-
-        noteToRename?.let { note ->
-            var newTitle by remember { mutableStateOf(note.title) }
-            TextInputDialog(
-                title = "Rename Note",
-                value = newTitle,
-                onValueChange = { newTitle = it },
-                confirmText = "Rename",
-                onConfirm = {
-                    if (newTitle.isNotBlank() && newTitle != note.title) {
-                        viewModel.updateNote(note.copy(title = newTitle))
+                    DropdownMenu(
+                        expanded = showCreateChooser,
+                        onDismissRequest = { showCreateChooser = false },
+                        modifier = Modifier.widthIn(min = 160.dp),
+                        offset = androidx.compose.ui.unit.DpOffset(x = (-16).dp, y = (-8).dp)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Note") },
+                            leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
+                            onClick = {
+                                showCreateChooser = false
+                                showNoteDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("S-Note") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = {
+                                showCreateChooser = false
+                                showSNoteDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("List") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = null) },
+                            onClick = {
+                                showCreateChooser = false
+                                showListDialog = true
+                            }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+                        DropdownMenuItem(
+                            text = { Text("Folder") },
+                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                            onClick = {
+                                showCreateChooser = false
+                                showFolderDialog = true
+                            }
+                        )
                     }
-                    noteToRename = null
-                },
-                onDismissRequest = { noteToRename = null }
-            )
-        }
-
-        noteToChangeStyle?.let { note ->
-            ChangeListStyleDialog(
-                title = "Change List Style",
-                currentStyle = note.listStyle,
-                onConfirm = { style ->
-                    viewModel.updateNoteListStyle(note, style)
-                    noteToChangeStyle = null
-                },
-                onDismissRequest = { noteToChangeStyle = null }
-            )
-        }
-
-        noteToMove?.let { note ->
-            MoveToFolderDialog(
-                itemLabel = note.title,
-                folders = allFolders,
-                excludedFolderIds = emptySet(),
-                onFolderSelected = { folder ->
-                    viewModel.moveNoteToFolder(note.id, folder?.id)
-                    noteToMove = null
-                },
-                onDismissRequest = { noteToMove = null }
-            )
-        }
-
-        notePreview?.let { note ->
-            NotePreviewDialog(
-                note = note,
-                viewModel = viewModel,
-                onEdit = {
-                    notePreview = null
-                    onNoteClick(note.id)
-                },
-                onDismissRequest = { notePreview = null }
-            )
-        }
-
-
-        folderToMove?.let { folder ->
-            val excludedIds = remember(allFolders, folder.id) { collectFolderDescendantIds(allFolders, folder.id) + folder.id }
-            MoveToFolderDialog(
-                itemLabel = folder.name,
-                folders = allFolders,
-                excludedFolderIds = excludedIds,
-                onFolderSelected = { target ->
-                    viewModel.updateFolder(folder.copy(parentFolderId = target?.id))
-                    folderToMove = null
-                },
-                onDismissRequest = { folderToMove = null }
-            )
-        }
-
-        if (showSettingsDialog) {
-            AppSettingsDialog(
-                onDismissRequest = { showSettingsDialog = false },
-                onOpenTrash = {
-                    showSettingsDialog = false
-                    onOpenTrash()
                 }
+            }
+        ) { padding ->
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (folders.isEmpty() && displayLists.isEmpty() && displayNotes.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyStateCard(
+                            title = "No items yet",
+                            message = "Tap the + button to create your first folder, list, or note.",
+                            modifier = Modifier.fillMaxWidth().height(160.dp)
+                        )
+                    }
+                } else {
+                    gridItems(folders, key = { it.id }) { folder ->
+                        val isCollapsed by collapsedFoldersRepo.isCollapsedFlow(folder.id).collectAsStateWithLifecycle(initialValue = true)
+                        val folderColorValue by folderColorRepo.colorFlow(folder.id).collectAsStateWithLifecycle(initialValue = null)
+                        FolderCard(
+                            folder = folder,
+                            viewModel = viewModel,
+                            onClick = { onFolderClick(folder.id) },
+                            onMenuClick = { folderToActions = folder },
+                            onMenuRename = { folderToRename = folder },
+                            onMenuDelete = { folderToDelete = folder },
+                            onMenuMoveToFolder = { folderToMove = folder },
+                            onMenuChangeColor = { folderToColor = folder },
+                            isCollapsed = isCollapsed,
+                            onMenuCollapse = { scope.launch { collapsedFoldersRepo.setCollapsed(folder.id, !isCollapsed) } },
+                            iconTint = folderColorValue?.let(::Color) ?: MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                val windowPos = coordinates.positionInWindow()
+                                folderBounds[folder.id] = androidx.compose.ui.geometry.Rect(
+                                    windowPos.x, windowPos.y,
+                                    windowPos.x + coordinates.size.width,
+                                    windowPos.y + coordinates.size.height
+                                )
+                            }
+                        )
+                    }
+
+                    if (folders.isNotEmpty() && (displayLists.isNotEmpty() || displayNotes.isNotEmpty())) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+
+                    gridItems(
+                        items = displayLists,
+                        key = { it.id },
+                        span = { GridItemSpan(2) }
+                    ) { note ->
+                        var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
+                        var isDragging by remember(note.id) { mutableStateOf(false) }
+                        var globalPosition by remember(note.id) { mutableStateOf(Offset.Zero) }
+
+                        Box(
+                            modifier = Modifier
+                                .onGloballyPositioned { globalPosition = it.positionInWindow() }
+                                .pointerInput(note.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { isDragging = true },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            itemOffset += dragAmount
+                                        },
+                                        onDragEnd = {
+                                            val dropPoint = globalPosition + itemOffset
+                                            folderBounds.forEach { (id, rect) ->
+                                                if (rect.contains(dropPoint)) {
+                                                    viewModel.moveNoteToFolder(note.id, id)
+                                                }
+                                            }
+                                            isDragging = false
+                                            itemOffset = Offset.Zero
+                                        },
+                                        onDragCancel = {
+                                            isDragging = false
+                                            itemOffset = Offset.Zero
+                                        }
+                                    )
+                                }
+                                .offset { IntOffset(itemOffset.x.roundToInt(), itemOffset.y.roundToInt()) }
+                                .zIndex(if (isDragging) 10f else 1f)
+                        ) {
+                            val noteCollapsed by collapsedNotesRepo.isCollapsedFlow(note.id).collectAsStateWithLifecycle(initialValue = true)
+                            NoteCard(
+                                note = note,
+                                viewModel = viewModel,
+                                onClick = { if (!isDragging) onNoteClick(note.id) },
+                                onMenuClick = { noteToActions = note },
+                                onMenuRename = { noteToRename = note },
+                                onMenuExpand = { notePreview = note },
+                                onMenuChangeStyle = { noteToChangeStyle = note },
+                                onMenuDelete = { noteToDelete = note },
+                                onMenuMoveToFolder = { noteToMove = note },
+                                isCollapsed = noteCollapsed,
+                                onMenuCollapse = { scope.launch { collapsedNotesRepo.setCollapsed(note.id, !noteCollapsed) } },
+                                modifier = Modifier.background(
+                                    if (isDragging) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    RoundedCornerShape(16.dp)
+                                )
+                            )
+                        }
+                    }
+
+                    gridItems(
+                        items = displayNotes,
+                        key = { it.id },
+                        span = { GridItemSpan(2) }
+                    ) { note ->
+                        var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
+                        var isDragging by remember(note.id) { mutableStateOf(false) }
+                        var globalPosition by remember(note.id) { mutableStateOf(Offset.Zero) }
+
+                        Box(
+                            modifier = Modifier
+                                .onGloballyPositioned { globalPosition = it.positionInWindow() }
+                                .pointerInput(note.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { isDragging = true },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            itemOffset += dragAmount
+                                        },
+                                        onDragEnd = {
+                                            val dropPoint = globalPosition + itemOffset
+                                            folderBounds.forEach { (id, rect) ->
+                                                if (rect.contains(dropPoint)) {
+                                                    viewModel.moveNoteToFolder(note.id, id)
+                                                }
+                                            }
+                                            isDragging = false
+                                            itemOffset = Offset.Zero
+                                        },
+                                        onDragCancel = {
+                                            isDragging = false
+                                            itemOffset = Offset.Zero
+                                        }
+                                    )
+                                }
+                                .offset { IntOffset(itemOffset.x.roundToInt(), itemOffset.y.roundToInt()) }
+                                .zIndex(if (isDragging) 10f else 1f)
+                        ) {
+                            val noteCollapsed by collapsedNotesRepo.isCollapsedFlow(note.id).collectAsStateWithLifecycle(initialValue = true)
+                            NoteCard(
+                                note = note,
+                                viewModel = viewModel,
+                                onClick = { if (!isDragging) onNoteClick(note.id) },
+                                onMenuClick = { noteToActions = note },
+                                onMenuRename = { noteToRename = note },
+                                onMenuExpand = { notePreview = note },
+                                onMenuChangeStyle = null,
+                                onMenuDelete = { noteToDelete = note },
+                                onMenuMoveToFolder = { noteToMove = note },
+                                isCollapsed = noteCollapsed,
+                                onMenuCollapse = { scope.launch { collapsedNotesRepo.setCollapsed(note.id, !noteCollapsed) } },
+                                modifier = Modifier.background(
+                                    if (isDragging) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    RoundedCornerShape(16.dp)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            folderToColor?.let { folder ->
+                val currentColor = folderColorRepo.colorFlow(folder.id).collectAsStateWithLifecycle(initialValue = null).value
+                FolderColorDialog(
+                    folderName = folder.name,
+                    currentColor = currentColor,
+                    onColorSelected = { selected ->
+                        folderColorRepo.setColor(folder.id, selected)
+                        folderToColor = null
+                    },
+                    onDismissRequest = { folderToColor = null }
+                )
+            }
+
+            folderToActions?.let { folder ->
+                val actionsCollapsed by collapsedFoldersRepo.isCollapsedFlow(folder.id).collectAsStateWithLifecycle(initialValue = true)
+                FolderActionsDialog(
+                    folder = folder,
+                    isCollapsed = actionsCollapsed,
+                    onExpandCollapse = {
+                        scope.launch { collapsedFoldersRepo.setCollapsed(folder.id, !actionsCollapsed) }
+                        folderToActions = null
+                    },
+                    onRename = {
+                        folderToRename = folder
+                        folderToActions = null
+                    },
+                    onMoveToFolder = {
+                        folderToMove = folder
+                        folderToActions = null
+                    },
+                    onChangeColor = {
+                        folderToColor = folder
+                        folderToActions = null
+                    },
+                    onDelete = {
+                        folderToDelete = folder
+                        folderToActions = null
+                    },
+                    onDismissRequest = { folderToActions = null }
+                )
+            }
+
+            noteToActions?.let { note ->
+                NoteActionsDialog(
+                    note = note,
+                    onRename = {
+                        noteToRename = note
+                        noteToActions = null
+                    },
+                    onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
+                        noteToChangeStyle = note
+                        noteToActions = null
+                    } },
+                    onMoveToFolder = {
+                        noteToMove = note
+                        noteToActions = null
+                    },
+                    onDelete = {
+                        noteToDelete = note
+                        noteToActions = null
+                    },
+                    onDismissRequest = { noteToActions = null }
+                )
+            }
+
+
+
+            CreateItemDialogs(
+                showFolderDialog = showFolderDialog,
+                folderDialogTitle = "New Folder",
+                onCreateFolder = { name -> viewModel.addFolder(name) },
+                onDismissFolderDialog = { showFolderDialog = false },
+                showNoteDialog = showNoteDialog,
+                noteDialogTitle = "New Note",
+                onCreateNote = { title -> viewModel.addNote(title, kind = NoteKinds.FREE_TEXT) },
+                onDismissNoteDialog = { showNoteDialog = false },
+                showSNoteDialog = showSNoteDialog,
+                sNoteDialogTitle = "New S-Note",
+                onCreateSNote = { title -> viewModel.addNote(title, kind = NoteKinds.SNOTE) },
+                onDismissSNoteDialog = { showSNoteDialog = false },
+                showListDialog = showListDialog,
+                listDialogTitle = "New List",
+                onCreateList = { listTitle, listStyle ->
+                    viewModel.addNote(
+                        listTitle,
+                        kind = NoteKinds.CHECKLIST,
+                        listStyle = listStyle
+                    )
+                },
+                onDismissListDialog = { showListDialog = false }
             )
+
+            folderToRename?.let { folder ->
+                var newName by remember { mutableStateOf(folder.name) }
+                TextInputDialog(
+                    title = "Rename Folder",
+                    value = newName,
+                    onValueChange = { newName = it },
+                    confirmText = "Rename",
+                    onConfirm = {
+                        if (newName.isNotBlank() && newName != folder.name) {
+                            viewModel.updateFolder(folder.copy(name = newName))
+                        }
+                        folderToRename = null
+                    },
+                    onDismissRequest = { folderToRename = null }
+                )
+            }
+
+
+            folderToDelete?.let { folder ->
+                ConfirmDialog(
+                    title = "Delete Folder",
+                    message = "Are you sure you want to delete the folder \"${folder.name}\"?\n\nThe notes inside this folder will also be deleted.",
+                    onConfirm = {
+                        viewModel.deleteFolder(folder)
+                        folderToDelete = null
+                    },
+                    onDismissRequest = { folderToDelete = null },
+                    confirmButtonColors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                )
+            }
+
+            noteToDelete?.let { note ->
+                ConfirmDialog(
+                    title = "Delete Note",
+                    message = "Are you sure you want to delete the note \"${note.title}\"?",
+                    onConfirm = {
+                        viewModel.deleteNote(note)
+                        noteToDelete = null
+                    },
+                    onDismissRequest = { noteToDelete = null },
+                    confirmButtonColors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                )
+            }
+
+            noteToRename?.let { note ->
+                var newTitle by remember { mutableStateOf(note.title) }
+                TextInputDialog(
+                    title = "Rename Note",
+                    value = newTitle,
+                    onValueChange = { newTitle = it },
+                    confirmText = "Rename",
+                    onConfirm = {
+                        if (newTitle.isNotBlank() && newTitle != note.title) {
+                            viewModel.updateNote(note.copy(title = newTitle))
+                        }
+                        noteToRename = null
+                    },
+                    onDismissRequest = { noteToRename = null }
+                )
+            }
+
+            noteToChangeStyle?.let { note ->
+                ChangeListStyleDialog(
+                    title = "Change List Style",
+                    currentStyle = note.listStyle,
+                    onConfirm = { style ->
+                        viewModel.updateNoteListStyle(note, style)
+                        noteToChangeStyle = null
+                    },
+                    onDismissRequest = { noteToChangeStyle = null }
+                )
+            }
+
+            noteToMove?.let { note ->
+                MoveToFolderDialog(
+                    itemLabel = note.title,
+                    folders = allFolders,
+                    excludedFolderIds = emptySet(),
+                    onFolderSelected = { folder ->
+                        viewModel.moveNoteToFolder(note.id, folder?.id)
+                        noteToMove = null
+                    },
+                    onDismissRequest = { noteToMove = null }
+                )
+            }
+
+            notePreview?.let { note ->
+                NotePreviewDialog(
+                    note = note,
+                    viewModel = viewModel,
+                    onEdit = {
+                        notePreview = null
+                        onNoteClick(note.id)
+                    },
+                    onDismissRequest = { notePreview = null }
+                )
+            }
+
+
+            folderToMove?.let { folder ->
+                val excludedIds = remember(allFolders, folder.id) { collectFolderDescendantIds(allFolders, folder.id) + folder.id }
+                MoveToFolderDialog(
+                    itemLabel = folder.name,
+                    folders = allFolders,
+                    excludedFolderIds = excludedIds,
+                    onFolderSelected = { target ->
+                        viewModel.updateFolder(folder.copy(parentFolderId = target?.id))
+                        folderToMove = null
+                    },
+                    onDismissRequest = { folderToMove = null }
+                )
+            }
+
+            if (showSettingsDialog) {
+                AppSettingsDialog(
+                    themeSettingsRepository = themeSettingsRepository,
+                    currentThemeMode = currentThemeMode,
+                    onDismissRequest = { showSettingsDialog = false },
+                    onOpenTrash = {
+                        showSettingsDialog = false
+                        onOpenTrash()
+                    }
+                )
+            }
         }
     }
 }
+
+
+
+
+
 
 

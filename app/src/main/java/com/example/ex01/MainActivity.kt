@@ -98,8 +98,9 @@ class MainActivity : ComponentActivity() {
             val themeSettingsRepository = remember { ThemeSettingsRepository(context) }
             val themeMode by themeSettingsRepository.themeModeFlow().collectAsStateWithLifecycle(initialValue = ThemeMode.LIGHT)
             SideEffect {
-                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
-                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
+                val isLight = themeMode != ThemeMode.DARK
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = isLight
+                WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = isLight
             }
             val viewModel: NoteViewModel = viewModel(
                 factory = NoteViewModelFactory(application, database.noteDao())
@@ -205,5 +206,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
 
 

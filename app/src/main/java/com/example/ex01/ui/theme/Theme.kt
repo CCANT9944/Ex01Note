@@ -49,8 +49,10 @@ fun Ex01Theme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // Force light model for now, dark mode completely removed
-    val colorScheme = LightColorScheme
+    val colorScheme = when (themeMode) {
+        ThemeMode.DARK -> DarkColorScheme
+        else -> LightColorScheme
+    }
 
     MaterialTheme(
         colorScheme = colorScheme,

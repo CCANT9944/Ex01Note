@@ -224,9 +224,7 @@ fun SNoteToolbar(
                     Box {
                         IconButton(
                             onClick = {
-                                if (isTextMode) {
-                                    showTextSizeMenu = true
-                                } else {
+                                if (!isTextMode) {
                                     commitActiveText()
                                     isTextMode = true
                                     isHighlighterMode = false
@@ -241,25 +239,6 @@ fun SNoteToolbar(
                             )
                         ) {
                             Icon(TextIcon, contentDescription = "Text", modifier = Modifier.size(20.dp))
-                        }
-                        DropdownMenu(
-                            expanded = showTextSizeMenu,
-                            onDismissRequest = { showTextSizeMenu = false },
-                            modifier = Modifier.width(60.dp)
-                        ) {
-                            listOf("40" to TEXT_MEDIUM, "64" to TEXT_LARGE).forEach { (label, size) ->
-                                DropdownMenuItem(
-                                    modifier = if (currentTextSize == size) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier,
-                                    text = {
-                                        Text(label, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 4.dp),
-                                    onClick = {
-                                        onTextSizeChange(size)
-                                        showTextSizeMenu = false
-                                    }
-                                )
-                            }
                         }
                     }
 

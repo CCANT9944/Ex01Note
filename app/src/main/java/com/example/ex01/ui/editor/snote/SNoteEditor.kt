@@ -1,4 +1,4 @@
-﻿package com.example.ex01.ui.editor.snote
+package com.example.ex01.ui.editor.snote
 
 // Trigger IDE analysis
 
@@ -67,7 +67,7 @@ fun SNoteEditor(
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
-    var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_MEDIUM)) }
+    var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_LARGE)) }
     val focusRequester = remember { FocusRequester() }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var currentHighlighterThickness by remember { mutableFloatStateOf(prefs.getFloat("highlighter_thickness", HIGHLIGHTER_MEDIUM)) }
@@ -858,10 +858,11 @@ fun SNoteEditor(
                                     val cY = (minY + maxY) / 2f
 
                                     selectedLines.forEach { l ->
+                                        val activeLineColor = if (l.color == Color.Unspecified || l.color == Color.Black || l.color == Color.White) strokeColor else l.color
                                         val finalColor = when {
                                             l.isEraser -> Color.Black
-                                            l.isHighlighter -> l.color.copy(alpha = 0.4f)
-                                            else -> l.color.copy(alpha = 0.7f)
+                                            l.isHighlighter -> activeLineColor.copy(alpha = 0.4f)
+                                            else -> activeLineColor.copy(alpha = 0.7f)
                                         }
 
                                         val finalBlendMode = when {
