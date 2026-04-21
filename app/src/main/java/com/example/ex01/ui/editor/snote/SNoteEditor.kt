@@ -16,6 +16,8 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material3.*
@@ -108,8 +110,11 @@ fun SNoteEditor(
     var activeTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val staticTextLayouts = remember { mutableMapOf<DrawingLine, androidx.compose.ui.text.TextLayoutResult>() }
     var needsAutoCommitAfterPaste by remember { mutableStateOf(false) }
+    var showLassoMenu by remember { mutableStateOf(false) }
+    var showLassoColorPicker by remember { mutableStateOf(false) }
+    var lassoMenuPosition by remember { mutableStateOf(Offset.Zero) }
 
-
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(serializedBody, pageHeightPx) {
         if (!initialLoadDone && pageHeightPx > 0f) {
@@ -459,17 +464,28 @@ fun SNoteEditor(
                                                         Pair(tw, th)
                                                     }
                                                     val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
-                                                    val dragging = !draggingHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
+                                                    val hittingMenuHandle = selectedLines.isNotEmpty() && isPointInMenuHandle(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
+                                                    val dragging = !draggingHandle && !hittingMenuHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
 
-                                                    if (draggingHandle) {
+                                                    if (hittingMenuHandle) {
+                                                        showLassoMenu = true
+                                                        showLassoColorPicker = false
+                                                        lassoMenuPosition = tapPos
+                                                    } else if (draggingHandle) {
                                                         isScalingSelection = true
+                                                        showLassoMenu = false
+                                                        showLassoColorPicker = false
                                                         dragStartScale = selectionScale
                                                         dragStartOffset = selectionDragOffset
                                                     } else if (dragging) {
                                                         isDraggingSelection = true
+                                                        showLassoMenu = false
+                                                        showLassoColorPicker = false
                                                         dragStartOffset = selectionDragOffset
                                                         dragStartScale = selectionScale
                                                     } else {
+                                                        showLassoMenu = false
+                                                        showLassoColorPicker = false
                                                         // Tap outside selection -> clear previous selection and start new lasso
                                                         if (selectedLines.isNotEmpty()) {
                                                             commitLassoSelection()
@@ -920,6 +936,18 @@ fun SNoteEditor(
                                         radius = 4.dp.toPx(),
                                         center = Offset(sMaxX + boundsPadding, sMaxY + boundsPadding)
                                     )
+
+                                    // Menu Handle
+                                    drawCircle(
+                                        color = primaryColor,
+                                        radius = 6.dp.toPx(),
+                                        center = Offset(sMaxX + boundsPadding, sMinY - boundsPadding)
+                                    )
+                                    val hr = 1.dp.toPx()
+                                    val menuHandleCenter = Offset(sMaxX + boundsPadding, sMinY - boundsPadding)
+                                    drawCircle(color = Color.White, radius = hr, center = menuHandleCenter.copy(y = menuHandleCenter.y - 3.dp.toPx()))
+                                    drawCircle(color = Color.White, radius = hr, center = menuHandleCenter)
+                                    drawCircle(color = Color.White, radius = hr, center = menuHandleCenter.copy(y = menuHandleCenter.y + 3.dp.toPx()))
                                 }
                             }
                         }
@@ -1020,6 +1048,77 @@ fun SNoteEditor(
                                             )
                                         )
                                     )
+                                }
+                            }
+                        }
+
+                        // Lasso Context Menu
+                        if (showLassoMenu && selectedLines.isNotEmpty()) {
+                            val xPosDp = with(LocalDensity.current) { lassoMenuPosition.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { lassoMenuPosition.y.toDp() }
+                            Box(modifier = Modifier.offset(x = xPosDp, y = yPosDp)) {
+                                DropdownMenu(
+                                    expanded = showLassoMenu,
+                                    onDismissRequest = { showLassoMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Colour") },
+                                        leadingIcon = { Icon(Icons.Default.Create, contentDescription = "Colour") },
+                                        onClick = {
+                                            showLassoMenu = false
+                                            showLassoColorPicker = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete") },
+                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "Delete") },
+                                        onClick = {
+                                            drawingLines.removeAll(selectedLines)
+                                            selectedLines.clear()
+                                            showLassoMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Lasso Color Picker
+                        if (showLassoColorPicker && selectedLines.isNotEmpty()) {
+                            val xPosDp = with(LocalDensity.current) { lassoMenuPosition.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { lassoMenuPosition.y.toDp() }
+                            Box(modifier = Modifier.offset(x = xPosDp, y = yPosDp)) {
+                                DropdownMenu(
+                                    expanded = showLassoColorPicker,
+                                    onDismissRequest = { showLassoColorPicker = false },
+                                    modifier = Modifier.width(64.dp)
+                                ) {
+                                    val penCols = listOf(Color.Unspecified) + ALLOWED_PEN_COLORS
+                                    penCols.forEach { c ->
+                                        DropdownMenuItem(
+                                            contentPadding = PaddingValues(horizontal = 4.dp),
+                                            text = {
+                                                Box(modifier = Modifier.fillMaxWidth().height(24.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                                    Box(modifier = Modifier
+                                                        .size(24.dp)
+                                                        .background(if (c == Color.Unspecified) strokeColor else c, shape = CircleShape)
+                                                        .border(1.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                val newSelection = selectedLines.map { l -> l.copy(color = c) }
+                                                selectedLines.clear()
+                                                selectedLines.addAll(newSelection)
+                                                if (c != Color.Unspecified) {
+                                                    updatePenColor(c.value.toLong())
+                                                } else {
+                                                    updatePenColor(Color.Unspecified.value.toLong())
+                                                }
+                                                showLassoColorPicker = false
+                                                commitChanges()
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
