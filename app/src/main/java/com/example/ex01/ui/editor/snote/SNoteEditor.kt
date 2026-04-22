@@ -249,7 +249,18 @@ fun SNoteEditor(
     val commitActiveText = {
         commitLassoSelection()
         if (activeTextInputPosition != null) {
-            if (activeTextValue.text.isNotBlank()) {
+            val savedState = viewModel.preEditTextState ?: drawingLines.toList()
+            val textChanged = (originalHitLine == null && activeTextValue.text.isNotBlank()) ||
+                              (originalHitLine != null && activeTextValue.text != originalHitLine!!.text)
+
+            if (textChanged) {
+                viewModel.pushUndoState(savedState)
+            }
+
+            if (!textChanged && originalHitLine != null) {
+                val index = if (originalHitIndex in 0..drawingLines.size) originalHitIndex else drawingLines.size
+                drawingLines.add(index, originalHitLine!!)
+            } else if (activeTextValue.text.isNotBlank()) {
                 val cVal = Color(currentColorValue.toULong())
                 val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
                 // --- TEXT PAGINATION ALGORITHM ---
@@ -316,8 +327,9 @@ fun SNoteEditor(
                     )
                 }
                 // ------------------------------------
-                undoneLines.clear()
             }
+
+            viewModel.preEditTextState = null
             originalHitLine = null
             originalHitIndex = -1
             activeTextInputPosition = null
@@ -526,7 +538,6 @@ fun SNoteEditor(
                                                      val gapPx = 24f * currentDensity
                                                      if (pageHeightPx > 0f && relY > pageHeightPx - gapPx) {
                                                          drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                                         undoneLines.clear()
                                                          currentPath = null
                                                          commitChanges()
                                                      } else {
@@ -762,7 +773,6 @@ fun SNoteEditor(
                                                     }
                                                 } else if (!isTextMode && currentPath != null) {
                                                     drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                                    undoneLines.clear()
                                                     currentPath = null
                                                     commitChanges()
                                                 }
@@ -1106,6 +1116,7 @@ fun SNoteEditor(
                                                 }
                                             },
                                             onClick = {
+                                                viewModel.pushUndoState(drawingLines.toList() + selectedLines.toList())
                                                 val newSelection = selectedLines.map { l -> l.copy(color = c) }
                                                 selectedLines.clear()
                                                 selectedLines.addAll(newSelection)
@@ -1115,7 +1126,7 @@ fun SNoteEditor(
                                                     updatePenColor(Color.Unspecified.value.toLong())
                                                 }
                                                 showLassoColorPicker = false
-                                                commitChanges()
+                                                commitLassoSelection()
                                             }
                                         )
                                     }
@@ -1269,7 +1280,6 @@ fun SNoteEditor(
                     TextButton(
                         onClick = {
                             drawingLines.clear()
-                            undoneLines.clear()
                             commitChanges()
                             showClearWarning = false
                         },

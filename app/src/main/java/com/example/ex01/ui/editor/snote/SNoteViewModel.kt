@@ -5,7 +5,50 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 class SNoteViewModel : ViewModel() {
     val drawingLines = mutableStateListOf<DrawingLine>()
-    val undoneLines = mutableStateListOf<DrawingLine>()
+    val undoStack = mutableStateListOf<List<DrawingLine>>()
+    val redoStack = mutableStateListOf<List<DrawingLine>>()
+    var preEditTextState by mutableStateOf<List<DrawingLine>?>(null)
+    var preLassoState by mutableStateOf<List<DrawingLine>?>(null)
+    
+    fun pushUndoState(state: List<DrawingLine> = drawingLines.toList()) {
+        undoStack.add(state)
+        redoStack.clear()
+    }
+    
+    fun undo() {
+        if (undoStack.isNotEmpty()) {
+            val currentState = drawingLines.toList()
+            val prevState = undoStack.removeAt(undoStack.size - 1)
+            // Add current text/lasso commits if needed, but easier to just cancel them
+            cancelOngoingEdits()
+            redoStack.add(currentState)
+            drawingLines.clear()
+            drawingLines.addAll(prevState)
+        }
+    }
+    
+    fun redo() {
+        if (redoStack.isNotEmpty()) {
+            val currentState = drawingLines.toList()
+            val nextState = redoStack.removeAt(redoStack.size - 1)
+            cancelOngoingEdits()
+            undoStack.add(currentState)
+            drawingLines.clear()
+            drawingLines.addAll(nextState)
+        }
+    }
+    
+    private fun cancelOngoingEdits() {
+        isDraggingSelection = false
+        isScalingSelection = false
+        showTextSizeMenu = false
+        activeTextInputPosition = null
+        selectedLines.clear()
+        preEditTextState = null
+        preLassoState = null
+        currentPath = null
+    }
+
     var currentPath by mutableStateOf<List<Offset>?>(null)
     var currentProperties by mutableStateOf(DrawingLine(emptyList()))
     var isEraserMode by mutableStateOf(false)

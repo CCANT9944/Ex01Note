@@ -318,13 +318,13 @@ fun SNoteToolbar(
                                     originalHitIndex = -1
                                 }
                                 commitChanges()
-                            } else if (drawingLines.isNotEmpty()) {
-                                undoneLines.add(drawingLines.removeAt(drawingLines.size - 1))
+                            } else {
+                                undo()
                                 commitChanges()
                             }
                         },
                         modifier = Modifier.size(38.dp),
-                        enabled = drawingLines.isNotEmpty() || activeTextInputPosition != null,
+                        enabled = undoStack.isNotEmpty() || activeTextInputPosition != null,
                         colors = IconButtonDefaults.iconButtonColors(
                             contentColor = iconColor,
                             disabledContentColor = iconColor.copy(alpha = 0.5f)
@@ -336,13 +336,11 @@ fun SNoteToolbar(
                     IconButton(
                         onClick = {
                             commitActiveText()
-                            if (undoneLines.isNotEmpty()) {
-                                drawingLines.add(undoneLines.removeAt(undoneLines.size - 1))
-                                commitChanges()
-                            }
+                            redo()
+                            commitChanges()
                         },
                         modifier = Modifier.size(38.dp),
-                        enabled = undoneLines.isNotEmpty(),
+                        enabled = redoStack.isNotEmpty(),
                         colors = IconButtonDefaults.iconButtonColors(
                             contentColor = iconColor,
                             disabledContentColor = iconColor.copy(alpha = 0.5f)
