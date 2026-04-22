@@ -537,6 +537,7 @@ fun SNoteEditor(
                                                      val relY = change.position.y % pageHeightPx
                                                      val gapPx = 24f * currentDensity
                                                      if (pageHeightPx > 0f && relY > pageHeightPx - gapPx) {
+                                                         viewModel.pushUndoState()
                                                          drawingLines.add(currentProperties.copy(points = currentPath!!))
                                                          currentPath = null
                                                          commitChanges()
@@ -772,6 +773,7 @@ fun SNoteEditor(
                                                         }
                                                     }
                                                 } else if (!isTextMode && currentPath != null) {
+                                                    viewModel.pushUndoState()
                                                     drawingLines.add(currentProperties.copy(points = currentPath!!))
                                                     currentPath = null
                                                     commitChanges()
