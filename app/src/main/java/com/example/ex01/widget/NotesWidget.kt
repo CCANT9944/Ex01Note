@@ -51,6 +51,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import com.example.ex01.utils.drawSNoteLine
+
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.content.res.Configuration
@@ -183,57 +185,15 @@ fun renderSNoteChunks(context: Context, snoteBody: String): List<Bitmap> {
             // Make the strokes slightly thicker for widget visibility without having to zoom the full Canvas
             val widgetStrokeMultiplier = 2.5f
 
-            if (line.isEraser) {
-                clearPaint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
-                canvas.drawPath(path, clearPaint)
-            } else if (line.isHighlighter) {
-                paint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
-                var uiColor = line.color
-                
-                if (isNightMode) {
-                    val luminance = (0.299f * uiColor.red) + (0.587f * uiColor.green) + (0.114f * uiColor.blue)
-                    if (luminance < 0.4f) {
-                        uiColor = Color.White
-                    }
-                }
-                
-                paint.color = android.graphics.Color.argb(
-                    (0.4f * 255).toInt(), // 40% alpha for highlighter
-                    (uiColor.red * 255).toInt(),
-                    (uiColor.green * 255).toInt(),
-                    (uiColor.blue * 255).toInt()
-                )
-                
-                val originalXfermode = paint.xfermode
-                val originalCap = paint.strokeCap
-                
-                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
-                paint.strokeCap = Paint.Cap.SQUARE
-                
-                canvas.drawPath(path, paint)
-                
-                // Reset
-                paint.xfermode = originalXfermode
-                paint.strokeCap = originalCap
-            } else {
-                paint.strokeWidth = line.strokeWidth * widgetStrokeMultiplier
-                var uiColor = line.color
-                
-                if (isNightMode) {
-                    val luminance = (0.299f * uiColor.red) + (0.587f * uiColor.green) + (0.114f * uiColor.blue)
-                    if (luminance < 0.4f) {
-                        uiColor = Color.White
-                    }
-                }
-                
-                paint.color = android.graphics.Color.argb(
-                    (uiColor.alpha * 255).toInt(),
-                    (uiColor.red * 255).toInt(),
-                    (uiColor.green * 255).toInt(),
-                    (uiColor.blue * 255).toInt()
-                )
-                canvas.drawPath(path, paint)
-            }
+            canvas.drawSNoteLine(
+                line = line,
+                path = path,
+                widgetStrokeMultiplier = widgetStrokeMultiplier,
+                uiColor = null,
+                isNightMode = isNightMode,
+                paint = paint,
+                clearPaint = clearPaint
+            )
         }
         canvas.restore()
         chunks.add(bitmap)

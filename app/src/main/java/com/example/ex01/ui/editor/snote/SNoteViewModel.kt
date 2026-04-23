@@ -10,14 +10,14 @@ class SNoteViewModel : ViewModel() {
     var preEditTextState by mutableStateOf<List<DrawingLine>?>(null)
     var preLassoState by mutableStateOf<List<DrawingLine>?>(null)
     
-    fun pushUndoState(state: List<DrawingLine> = drawingLines.toList()) {
+    fun pushUndoState(state: List<DrawingLine> = drawingLines.toList() + selectedLines.toList()) {
         undoStack.add(state)
         redoStack.clear()
     }
     
     fun undo() {
         if (undoStack.isNotEmpty()) {
-            val currentState = drawingLines.toList()
+            val currentState = drawingLines.toList() + selectedLines.toList()
             val prevState = undoStack.removeAt(undoStack.size - 1)
             // Add current text/lasso commits if needed, but easier to just cancel them
             cancelOngoingEdits()
@@ -29,7 +29,7 @@ class SNoteViewModel : ViewModel() {
     
     fun redo() {
         if (redoStack.isNotEmpty()) {
-            val currentState = drawingLines.toList()
+            val currentState = drawingLines.toList() + selectedLines.toList()
             val nextState = redoStack.removeAt(redoStack.size - 1)
             cancelOngoingEdits()
             undoStack.add(currentState)
@@ -44,9 +44,12 @@ class SNoteViewModel : ViewModel() {
         showTextSizeMenu = false
         activeTextInputPosition = null
         selectedLines.clear()
+        selectionDragOffset = Offset.Zero
+        selectionScale = 1f
         preEditTextState = null
         preLassoState = null
         currentPath = null
+        lassoPath = null
     }
 
     var currentPath by mutableStateOf<List<Offset>?>(null)
@@ -75,4 +78,37 @@ class SNoteViewModel : ViewModel() {
     var originalHitIndex by mutableIntStateOf(-1)
 
     var triggerAddPage by mutableStateOf(false)
+
+    suspend fun getLassoBox(lines: List<DrawingLine>): Pair<Offset, Offset>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        if (lines.isEmpty()) return@withContext null
+        var minX = Float.MAX_VALUE
+        var minY = Float.MAX_VALUE
+        var maxX = Float.MIN_VALUE
+        var maxY = Float.MIN_VALUE
+        for (l in lines) {
+            for (p in l.points) {
+                if (p.x < minX) minX = p.x
+                if (p.y < minY) minY = p.y
+                if (p.x > maxX) maxX = p.x
+                if (p.y > maxY) maxY = p.y
+            }
+        }
+        Pair(Offset(minX, minY), Offset(maxX, maxY))
+    }
+
+    suspend fun calculateTextVisualRows(text: String, density: Float, availableWidthPx: Float, strokeWidth: Float, startX: Float): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val maxTextWidthPx = availableWidthPx - startX - (4f * density)
+        // using a basic proportion approximation to keep off main thread without passing Paint
+        var visualRows = 0
+        val charWidthEstimate = strokeWidth * 0.6f
+        for (lineStr in text.split("\n")) {
+            val w = lineStr.length * charWidthEstimate
+            if (maxTextWidthPx > 0f) {
+                 visualRows += kotlin.math.max(1, kotlin.math.ceil((w / (maxTextWidthPx * 0.95f)).toDouble()).toInt())
+            } else {
+                 visualRows += 1
+            }
+        }
+        visualRows
+    }
 }

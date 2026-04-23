@@ -1,396 +1,90 @@
 package com.example.ex01.ui.editor.snote
-
-// Trigger IDE analysis
-
-import com.example.ex01.utils.*
-
-
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.border
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.*
+
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.layout.layout
-import android.content.Context
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.TextStyle
+import com.example.ex01.utils.*
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.text.input.TextFieldValue
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
+import com.example.ex01.utils.*
 import androidx.compose.ui.unit.IntOffset
-import androidx.core.content.edit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import com.example.ex01.utils.drawSNoteLine
 
-
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun SNoteEditor(
-    serializedBody: String,
-    onSerializedBodyChange: (String) -> Unit,
-    viewModel: SNoteViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-) = with(viewModel) {
-    val context = LocalContext.current
-    val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
-
-    var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_LARGE)) }
-    val focusRequester = remember { FocusRequester() }
-    val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    var currentHighlighterThickness by remember { mutableFloatStateOf(prefs.getFloat("highlighter_thickness", HIGHLIGHTER_MEDIUM)) }
-    var currentThickness by remember { mutableFloatStateOf(prefs.getFloat("pen_thickness", PEN_MEDIUM)) }
-    var currentEraserThickness by remember { mutableFloatStateOf(prefs.getFloat("eraser_thickness", ERASER_MEDIUM)) }
-    var currentColorValue by remember { mutableLongStateOf(prefs.getLong("pen_color", Color.Unspecified.value.toLong())) }
-    val keyboardController = LocalSoftwareKeyboardController.current
-
-    fun updatePenThickness(t: Float) {
-        currentThickness = t
-        prefs.edit { putFloat("pen_thickness", t) }
-    }
-
-    fun updateEraserThickness(t: Float) {
-        currentEraserThickness = t
-        prefs.edit { putFloat("eraser_thickness", t) }
-    }
-
-    fun updateTextSize(t: Float) {
-        currentTextSize = t
-        prefs.edit { putFloat("text_size", t) }
-    }
-
-    fun updateHighlighterThickness(t: Float) {
-        currentHighlighterThickness = t
-        prefs.edit { putFloat("highlighter_thickness", t) }
-    }
-
-    fun updatePenColor(c: Long) {
-        currentColorValue = c
-        prefs.edit { putLong("pen_color", c) }
-    }
-
-    var pageHeightPx by remember { mutableFloatStateOf(0f) }
-    var pageHeightDp by remember { mutableStateOf(0.dp) }
-    var currentCanvasWidthPx by remember { mutableFloatStateOf(0f) }
-    var currentDensity = 1f
-    var activeTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-    val staticTextLayouts = remember { mutableMapOf<DrawingLine, androidx.compose.ui.text.TextLayoutResult>() }
-    var needsAutoCommitAfterPaste by remember { mutableStateOf(false) }
-    var showLassoMenu by remember { mutableStateOf(false) }
-    var showLassoColorPicker by remember { mutableStateOf(false) }
-    var lassoMenuPosition by remember { mutableStateOf(Offset.Zero) }
-
-    val coroutineScope = rememberCoroutineScope()
-
-    LaunchedEffect(serializedBody, pageHeightPx) {
-        if (!initialLoadDone && pageHeightPx > 0f) {
-            initialLoadDone = true
-            if (serializedBody.isNotBlank()) {
-                val lines = withContext(Dispatchers.Default) {
-                    deserializeDrawing(serializedBody)
-                }
-                drawingLines.addAll(lines)
-                val maxY = lines.flatMap { it.points }.maxOfOrNull { it.y } ?: 0f
-                if (maxY > 0) {
-                    val neededPages = kotlin.math.ceil((maxY / pageHeightPx).toDouble()).toInt()
-                    if (neededPages > pageCount) pageCount = neededPages
-                }
-            }
-        }
-    }
-
-    val commitChanges = {
-        val linesToSave = drawingLines.toList().toMutableList()
-        if (selectedLines.isNotEmpty()) {
-            var minX = Float.MAX_VALUE
-            var minY = Float.MAX_VALUE
-            var maxX = Float.MIN_VALUE
-            var maxY = Float.MIN_VALUE
-            selectedLines.forEach { l ->
-                if (l.isEraser) return@forEach
-                if (l.text != null && l.points.isNotEmpty()) {
-                    val startPt = l.points.first()
-                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
-                    if (startPt.x < minX) minX = startPt.x
-                    if (startPt.y < minY) minY = startPt.y
-                    if (startPt.x + tw > maxX) maxX = startPt.x + tw
-                    if (startPt.y + th > maxY) maxY = startPt.y + th
-                } else {
-                    val halfStroke = l.strokeWidth / 2f
-                    l.points.forEach { pt ->
-                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
-                    }
-                }
-            }
-            val cX = (minX + maxX) / 2f
-            val cY = (minY + maxY) / 2f
-
-            val finalizedLines = selectedLines.map { l ->
-                l.copy(
-                    points = l.points.map { p ->
-                        Offset(
-                            cX + (p.x - cX) * selectionScale + selectionDragOffset.x,
-                            cY + (p.y - cY) * selectionScale + selectionDragOffset.y
-                        )
-                    },
-                    strokeWidth = l.strokeWidth * selectionScale
-                )
-            }
-            linesToSave.addAll(finalizedLines)
-        }
-        if (activeTextInputPosition != null && activeTextValue.text.isNotEmpty()) {
-            val cVal = Color(currentColorValue.toULong())
-            val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-            linesToSave.add(
-                DrawingLine(
-                    points = listOf(activeTextInputPosition!!),
-                    color = chosenColor,
-                    strokeWidth = currentTextSize,
-                    text = activeTextValue.text
-                )
-            )
-        }
-        onSerializedBodyChange(serializeDrawing(linesToSave))
-    }
-
-    val commitLassoSelection = {
-        if (selectedLines.isNotEmpty()) {
-            var minX = Float.MAX_VALUE
-            var minY = Float.MAX_VALUE
-            var maxX = Float.MIN_VALUE
-            var maxY = Float.MIN_VALUE
-            selectedLines.forEach { l ->
-                if (l.isEraser) return@forEach
-                if (l.text != null && l.points.isNotEmpty()) {
-                    val startPt = l.points.first()
-                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
-                    if (startPt.x < minX) minX = startPt.x
-                    if (startPt.y < minY) minY = startPt.y
-                    if (startPt.x + tw > maxX) maxX = startPt.x + tw
-                    if (startPt.y + th > maxY) maxY = startPt.y + th
-                } else {
-                    val halfStroke = l.strokeWidth / 2f
-                    l.points.forEach { pt ->
-                        if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                        if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                        if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                        if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
-                    }
-                }
-            }
-            val cX = (minX + maxX) / 2f
-            val cY = (minY + maxY) / 2f
-
-            val finalizedLines = selectedLines.map { l ->
-                l.copy(
-                    points = l.points.map { p ->
-                        Offset(
-                            cX + (p.x - cX) * selectionScale + selectionDragOffset.x,
-                            cY + (p.y - cY) * selectionScale + selectionDragOffset.y
-                        )
-                    },
-                    strokeWidth = l.strokeWidth * selectionScale
-                )
-            }
-            drawingLines.addAll(finalizedLines)
-            selectedLines.clear()
-            selectionDragOffset = Offset.Zero
-            selectionScale = 1f
-            commitChanges()
-        }
-    }
-
-    val currentCommitChanges by rememberUpdatedState(commitChanges)
-    DisposableEffect(Unit) {
-        onDispose {
-            currentCommitChanges()
-        }
-    }
-
-    val commitActiveText = {
-        commitLassoSelection()
-        if (activeTextInputPosition != null) {
-            val savedState = viewModel.preEditTextState ?: drawingLines.toList()
-            val textChanged = (originalHitLine == null && activeTextValue.text.isNotBlank()) ||
-                              (originalHitLine != null && activeTextValue.text != originalHitLine!!.text)
-
-            if (textChanged) {
-                viewModel.pushUndoState(savedState)
-            }
-
-            if (!textChanged && originalHitLine != null) {
-                val index = if (originalHitIndex in 0..drawingLines.size) originalHitIndex else drawingLines.size
-                drawingLines.add(index, originalHitLine!!)
-            } else if (activeTextValue.text.isNotBlank()) {
-                val cVal = Color(currentColorValue.toULong())
-                val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                // --- TEXT PAGINATION ALGORITHM ---
-                val startX = activeTextInputPosition!!.x
-                val startY = activeTextInputPosition!!.y
-                val fullText = activeTextValue.text
-
-                if (activeTextLayoutResult != null && pageHeightPx > 0f) {
-                    val layRes = activeTextLayoutResult!!
-                    var currentBlockStartIdx = 0
-                    var currentBlockY = startY
-                    var cumulativeGapOffset = 0f
-
-                    for (i in 0 until layRes.lineCount) {
-                        val virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
-                        val virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
-                        val targetPage = kotlin.math.floor(virtualTop / pageHeightPx).toInt()
-                        val pageBottom = (targetPage + 1) * pageHeightPx - (24f * currentDensity)
-
-                        if (virtualBottom > pageBottom) {
-                            if (i > 0) {
-                                val endIdx = layRes.getLineEnd(i - 1)
-                                if (endIdx > currentBlockStartIdx) {
-                                    drawingLines.add(
-                                        DrawingLine(
-                                            points = listOf(Offset(startX, currentBlockY)),
-                                            color = chosenColor,
-                                            strokeWidth = currentTextSize,
-                                            text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r')
-                                        )
-                                    )
-                                }
-                                currentBlockStartIdx = layRes.getLineStart(i)
-                            }
-                            
-                            val nxtPage = targetPage + 1
-                            var newBlockY = nxtPage * pageHeightPx + (32f * currentDensity)
-                            val rowHeight = TEXT_LARGE * 1.2f
-                            newBlockY = kotlin.math.ceil(newBlockY / rowHeight) * rowHeight
-                            
-                            cumulativeGapOffset += (newBlockY - virtualTop)
-                            currentBlockY = newBlockY
-                        }
-                    }
-                    if (currentBlockStartIdx < fullText.length) {
-                        drawingLines.add(
-                            DrawingLine(
-                                points = listOf(Offset(startX, currentBlockY)),
-                                color = chosenColor,
-                                strokeWidth = currentTextSize,
-                                text = fullText.substring(currentBlockStartIdx, fullText.length)
-                            )
-                        )
-                    }
-                } else {
-                    // Fallback block mapping if no precise text layout
-                    drawingLines.add(
-                        DrawingLine(
-                            points = listOf(Offset(startX, startY)),
-                            color = chosenColor,
-                            strokeWidth = currentTextSize,
-                            text = fullText
-                        )
-                    )
-                }
-                // ------------------------------------
-            }
-
-            viewModel.preEditTextState = null
-            originalHitLine = null
-            originalHitIndex = -1
-            activeTextInputPosition = null
-            activeTextValue = TextFieldValue("")
-            commitChanges()
-        }
-    }
-
-
-
+fun SNoteCanvas(
+    viewModel: SNoteViewModel,
+    state: SNoteEditorState,
+    focusRequester: FocusRequester,
+    bringIntoViewRequester: androidx.compose.foundation.relocation.BringIntoViewRequester,
+    commitChanges: () -> Unit,
+    commitActiveText: () -> Unit
+) {
+    
+    val primaryColor = MaterialTheme.colorScheme.primary
     val strokeColor = MaterialTheme.colorScheme.onSurface
     val eraserColor = MaterialTheme.colorScheme.surface
-    val primaryColor = MaterialTheme.colorScheme.primary
+    val isHighlighterMode = viewModel.isHighlighterMode
 
-    LaunchedEffect(triggerAddPage) {
-        if (triggerAddPage) {
-            commitActiveText()
-            pageCount++
-            triggerAddPage = false
-        }
-    }
+    val coroutineScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
 
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
-        SNoteToolbar(
-            viewModel = viewModel,
-            currentColorValue = currentColorValue,
-            currentThickness = currentThickness,
-            currentEraserThickness = currentEraserThickness,
-            currentHighlighterThickness = currentHighlighterThickness,
-            currentTextSize = currentTextSize,
-            onThicknessChange = ::updatePenThickness,
-            onEraserThicknessChange = ::updateEraserThickness,
-            onHighlighterThicknessChange = ::updateHighlighterThickness,
-            onTextSizeChange = ::updateTextSize,
-            onColorChange = ::updatePenColor,
-            commitActiveText = commitActiveText,
-            commitChanges = commitChanges
-        )
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(16.dp),
-            shadowElevation = 0.dp,
-            color = androidx.compose.ui.graphics.Color.Transparent
-        ) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val availableHeight = this.maxHeight
                 val availableWidth = this.maxWidth
                 val density = LocalDensity.current
                 val availableWidthPx = with(density) { availableWidth.toPx() }
-                currentCanvasWidthPx = availableWidthPx
-                currentDensity = density.density
+                state.currentCanvasWidthPx = availableWidthPx
+                state.currentDensity = density.density
 
                 LaunchedEffect(availableHeight) {
-                    if (pageHeightDp == 0.dp) {
-                        pageHeightDp = availableHeight
-                        pageHeightPx = with(density) { availableHeight.toPx() }
+                    if (state.pageHeightDp == 0.dp) {
+                        state.pageHeightDp = availableHeight
+                        state.pageHeightPx = with(density) { availableHeight.toPx() }
                     }
                 }
 
@@ -401,18 +95,18 @@ fun SNoteEditor(
                         .fillMaxSize()
                         .verticalScroll(scrollState)
                 ) {
-                    if (pageHeightDp > 0.dp) {
+                    if (state.pageHeightDp > 0.dp) {
                         // Background & Dividers Layer
                         Canvas(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(pageHeightDp * pageCount)
+                                .height(state.pageHeightDp * viewModel.pageCount)
                         ) {
                             drawRect(color = androidx.compose.ui.graphics.Color(0xFFE5E5E5), size = size)
                             val pageGap = 24.dp.toPx()
-                            for (i in 0 until pageCount) {
-                                val yStart = i * pageHeightPx
-                                val rectHeight = pageHeightPx - pageGap
+                            for (i in 0 until viewModel.pageCount) {
+                                val yStart = i * state.pageHeightPx
+                                val rectHeight = state.pageHeightPx - pageGap
                                 drawRoundRect(
                                     color = eraserColor,
                                     topLeft = androidx.compose.ui.geometry.Offset(0f, yStart),
@@ -426,9 +120,9 @@ fun SNoteEditor(
                         Canvas(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(pageHeightDp * pageCount)
+                                .height(state.pageHeightDp * viewModel.pageCount)
                                 .graphicsLayer(alpha = 0.99f) // Force offscreen layer to support true transparent erasing
-                                .pointerInput(currentColorValue, currentThickness, currentEraserThickness, isEraserMode, isTextMode, isLassoMode) {
+                                .pointerInput(state.currentColorValue, state.currentThickness, state.currentEraserThickness, viewModel.isEraserMode, viewModel.isTextMode, viewModel.isLassoMode) {
                                     awaitPointerEventScope {
                                         var textModeDownPos: Offset? = null
                                         var dragStartOffset = Offset.Zero
@@ -446,116 +140,116 @@ fun SNoteEditor(
                                             val isStylus = change.type == PointerType.Stylus
                                             val isStylusEraser = change.type == PointerType.Eraser
 
-                                            if (!isStylus && !isStylusEraser && !isTextMode) continue
+                                            if (!isStylus && !isStylusEraser && !viewModel.isTextMode) continue
 
-                                            if (!isTextMode) {
+                                            if (!viewModel.isTextMode) {
                                                 // Consume the event so horizontal/vertical scroll doesn't intercept it while drawing
                                                 change.consume()
                                             }
 
                                             if (change.pressed && !change.previousPressed) {
                                                 // Prevent starting drawing or text inside the page gap
-                                                if (pageHeightPx > 0f) {
-                                                    val relY = change.position.y % pageHeightPx
-                                                    val gapPx = 24f * currentDensity
-                                                    if (relY > pageHeightPx - gapPx) {
+                                                if (state.pageHeightPx > 0f) {
+                                                    val relY = change.position.y % state.pageHeightPx
+                                                    val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                                    if (relY > state.pageHeightPx - gapPx) {
                                                         continue
                                                     }
                                                 }
 
-                                                if (isTextMode) {
+                                                if (viewModel.isTextMode) {
                                                     textModeDownPos = change.position
                                                 }
-                                                if (isLassoMode) {
+                                                if (viewModel.isLassoMode) {
                                                     // Handle lasso tool start
                                                     change.consume()
                                                     val tapPos = change.position
                                                     
                                                     // Determine if tap is inside the current selection bounding box or handle
                                                     // pre-compute text bounds for hit tests
-                                                    val tBounds = selectedLines.filter { it.text != null }.associateWith { 
-                                                        val tw = staticTextLayouts[it]?.size?.width?.toFloat() ?: (it.strokeWidth * 0.6f * it.text!!.length.toFloat())
-                                                        val th = staticTextLayouts[it]?.size?.height?.toFloat() ?: (it.strokeWidth * 1.5f)
+                                                    val tBounds = viewModel.selectedLines.filter { it.text != null }.associateWith { 
+                                                        val tw = state.staticTextLayouts[it]?.size?.width?.toFloat() ?: (it.strokeWidth * 0.6f * it.text!!.length.toFloat())
+                                                        val th = state.staticTextLayouts[it]?.size?.height?.toFloat() ?: (it.strokeWidth * 1.5f)
                                                         Pair(tw, th)
                                                     }
-                                                    val draggingHandle = selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
-                                                    val hittingMenuHandle = selectedLines.isNotEmpty() && isPointInMenuHandle(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
-                                                    val dragging = !draggingHandle && !hittingMenuHandle && selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, selectedLines, selectionDragOffset, selectionScale, tBounds)
+                                                    val draggingHandle = viewModel.selectedLines.isNotEmpty() && isPointInScaleHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
+                                                    val hittingMenuHandle = viewModel.selectedLines.isNotEmpty() && isPointInMenuHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
+                                                    val dragging = !draggingHandle && !hittingMenuHandle && viewModel.selectedLines.isNotEmpty() && isPointInSelectionBounds(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
 
                                                     if (hittingMenuHandle) {
-                                                        showLassoMenu = true
-                                                        showLassoColorPicker = false
-                                                        lassoMenuPosition = tapPos
+                                                        state.showLassoMenu = true
+                                                        state.showLassoColorPicker = false
+                                                        state.lassoMenuPosition = tapPos
                                                     } else if (draggingHandle) {
                                                         if (viewModel.preLassoState == null) {
-                                                            viewModel.preLassoState = drawingLines.toList() + selectedLines.toList()
+                                                            viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
                                                         }
-                                                        isScalingSelection = true
-                                                        showLassoMenu = false
-                                                        showLassoColorPicker = false
-                                                        dragStartScale = selectionScale
-                                                        dragStartOffset = selectionDragOffset
+                                                        viewModel.isScalingSelection = true
+                                                        state.showLassoMenu = false
+                                                        state.showLassoColorPicker = false
+                                                        dragStartScale = viewModel.selectionScale
+                                                        dragStartOffset = viewModel.selectionDragOffset
                                                     } else if (dragging) {
                                                         if (viewModel.preLassoState == null) {
-                                                            viewModel.preLassoState = drawingLines.toList() + selectedLines.toList()
+                                                            viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
                                                         }
-                                                        isDraggingSelection = true
-                                                        showLassoMenu = false
-                                                        showLassoColorPicker = false
-                                                        dragStartOffset = selectionDragOffset
-                                                        dragStartScale = selectionScale
+                                                        viewModel.isDraggingSelection = true
+                                                        state.showLassoMenu = false
+                                                        state.showLassoColorPicker = false
+                                                        dragStartOffset = viewModel.selectionDragOffset
+                                                        dragStartScale = viewModel.selectionScale
                                                     } else {
-                                                        showLassoMenu = false
-                                                        showLassoColorPicker = false
+                                                        state.showLassoMenu = false
+                                                        state.showLassoColorPicker = false
                                                         // Tap outside selection -> clear previous selection and start new lasso
-                                                        if (selectedLines.isNotEmpty()) {
-                                                            commitLassoSelection()
+                                                        if (viewModel.selectedLines.isNotEmpty()) {
+                                                            state.commitLassoSelection { commitChanges() }
                                                         }
-                                                        lassoPath = listOf(tapPos)
+                                                        viewModel.lassoPath = listOf(tapPos)
                                                     }
-                                                    } else if (!isTextMode && currentPath == null) {
+                                                    } else if (!viewModel.isTextMode && viewModel.currentPath == null) {
                                                     commitActiveText()
-                                                    currentPath = listOf(change.position)
-                                                    val actualEraserMode = isStylusEraser || isEraserMode
-                                                    val cVal = Color(currentColorValue.toULong())
+                                                    viewModel.currentPath = listOf(change.position)
+                                                    val actualEraserMode = isStylusEraser || viewModel.isEraserMode
+                                                    val cVal = Color(state.currentColorValue.toULong())
                                                     val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                                                    currentProperties = DrawingLine(
-                                                        points = currentPath!!,
+                                                    viewModel.currentProperties = DrawingLine(
+                                                        points = viewModel.currentPath!!,
                                                         color = if (actualEraserMode) Color.Unspecified else chosenColor,
-                                                        strokeWidth = if (actualEraserMode) currentEraserThickness else if (isHighlighterMode) currentHighlighterThickness else currentThickness,
+                                                        strokeWidth = if (actualEraserMode) state.currentEraserThickness else if (isHighlighterMode) state.currentHighlighterThickness else state.currentThickness,
                                                         isEraser = actualEraserMode,
                                                         isHighlighter = isHighlighterMode
                                                      )
                                                  }
                                             } else if (change.pressed && change.previousPressed) {
-                                                 if (isLassoMode) {
+                                                 if (viewModel.isLassoMode) {
                                                      change.consume()
-                                                     if (isScalingSelection) {
+                                                     if (viewModel.isScalingSelection) {
                                                          val dx = change.position.x - change.previousPosition.x
                                                          val dy = change.position.y - change.previousPosition.y
                                                          // Base scale change off total drag distance out/in
                                                          val scaleDelta = (dx + dy) / 400f
-                                                         selectionScale = kotlin.math.max(0.1f, selectionScale + scaleDelta)
-                                                     } else if (isDraggingSelection) {
+                                                         viewModel.selectionScale = kotlin.math.max(0.1f, viewModel.selectionScale + scaleDelta)
+                                                     } else if (viewModel.isDraggingSelection) {
                                                          val dragAmount = change.position - change.previousPosition
-                                                         selectionDragOffset += dragAmount
-                                                     } else if (lassoPath != null) {
-                                                         lassoPath = lassoPath!! + change.position
+                                                         viewModel.selectionDragOffset += dragAmount
+                                                     } else if (viewModel.lassoPath != null) {
+                                                         viewModel.lassoPath = viewModel.lassoPath!! + change.position
                                                      }
-                                                 } else if (!isTextMode && currentPath != null) {
-                                                     val relY = change.position.y % pageHeightPx
-                                                     val gapPx = 24f * currentDensity
-                                                     if (pageHeightPx > 0f && relY > pageHeightPx - gapPx) {
+                                                 } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
+                                                     val relY = change.position.y % state.pageHeightPx
+                                                     val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                                     if (state.pageHeightPx > 0f && relY > state.pageHeightPx - gapPx) {
                                                          viewModel.pushUndoState()
-                                                         drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                                         currentPath = null
+                                                         viewModel.drawingLines.add(viewModel.currentProperties.copy(points = viewModel.currentPath!!))
+                                                         viewModel.currentPath = null
                                                          commitChanges()
                                                      } else {
-                                                         currentPath = currentPath!! + change.position
+                                                         viewModel.currentPath = viewModel.currentPath!! + change.position
                                                      }
                                                  }
                                              } else if (!change.pressed && change.previousPressed) {
-                                                if (isTextMode) {
+                                                if (viewModel.isTextMode) {
                                                     val downPos = textModeDownPos
                                                     textModeDownPos = null
                                                     
@@ -579,15 +273,15 @@ fun SNoteEditor(
 
                                                     commitActiveText()
 
-                                                    val rowHeight = TEXT_LARGE * 1.2f
+                                                    val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
                                                     val clickedRowIndex = (tapPos.y / rowHeight).toInt()
                                                     val targetY = clickedRowIndex * rowHeight
 
                                                     var hitIndex = -1
-                                                    for (i in drawingLines.indices.reversed()) {
-                                                        val l = drawingLines[i]
+                                                    for (i in viewModel.drawingLines.indices.reversed()) {
+                                                        val l = viewModel.drawingLines[i]
                                                         if (l.text != null && l.points.isNotEmpty()) {
-                                                            val layRes = staticTextLayouts[l]
+                                                            val layRes = state.staticTextLayouts[l]
                                                             if (layRes != null) {
                                                                 val py = l.points.first().y
                                                                 if (tapPos.y >= py && tapPos.y <= py + layRes.size.height) {
@@ -620,46 +314,46 @@ fun SNoteEditor(
                                                     }
 
                                                     if (hitIndex != -1) {
-                                                        viewModel.preEditTextState = drawingLines.toList() + selectedLines.toList()
-                                                        val hitLine = drawingLines.removeAt(hitIndex)
-                                                        originalHitLine = hitLine
-                                                        originalHitIndex = hitIndex
-                                                        updatePenColor(hitLine.color.value.toLong())
-                                                        activeTextInputPosition = hitLine.points.first()
+                                                        viewModel.preEditTextState = viewModel.drawingLines.toList()
+                                                        val hitLine = viewModel.drawingLines.removeAt(hitIndex)
+                                                        viewModel.originalHitLine = hitLine
+                                                        viewModel.originalHitIndex = hitIndex
+                                                        state.updatePenColor(hitLine.color.value.toLong())
+                                                        viewModel.activeTextInputPosition = hitLine.points.first()
                                                         val safeText = hitLine.text!! // Keep original newlines
 
-                                                        val layRes = staticTextLayouts[hitLine]
+                                                        val layRes = state.staticTextLayouts[hitLine]
                                                         var finalCharIdx = safeText.length
                                                         if (layRes != null) {
                                                             val localOffset = tapPos - hitLine.points.first()
                                                             finalCharIdx = layRes.getOffsetForPosition(localOffset)
                                                         }
 
-                                                        activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
-                                                        currentTextSize = hitLine.strokeWidth
+                                                        viewModel.activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
+                                                        state.currentTextSize = hitLine.strokeWidth
                                                         commitChanges()
                                                     } else {
                                                         val defaultIndent = with(density) { 16.dp.toPx() }
-                                                        activeTextInputPosition = Offset(defaultIndent, targetY)
-                                                        activeTextValue = TextFieldValue("")
+                                                        viewModel.activeTextInputPosition = Offset(defaultIndent, targetY)
+                                                        viewModel.activeTextValue = TextFieldValue("")
                                                         commitChanges()
                                                     }
-                                                } else if (isLassoMode) {
-                                                    if (isScalingSelection || isDraggingSelection) {
-                                                        if (isScalingSelection) isScalingSelection = false
-                                                        if (isDraggingSelection) isDraggingSelection = false
+                                                } else if (viewModel.isLassoMode) {
+                                                    if (viewModel.isScalingSelection || viewModel.isDraggingSelection) {
+                                                        if (viewModel.isScalingSelection) viewModel.isScalingSelection = false
+                                                        if (viewModel.isDraggingSelection) viewModel.isDraggingSelection = false
 
-                                                        if (selectedLines.isNotEmpty() && pageHeightPx > 0f) {
+                                                        if (viewModel.selectedLines.isNotEmpty() && state.pageHeightPx > 0f) {
                                                             var minY = Float.MAX_VALUE
                                                             var maxY = Float.MIN_VALUE
                                                             var minX = Float.MAX_VALUE
                                                             var maxX = Float.MIN_VALUE
-                                                            selectedLines.forEach { l ->
+                                                            viewModel.selectedLines.forEach { l ->
                                                                 if (!l.isEraser) {
                                                                     if (l.text != null && l.points.isNotEmpty()) {
                                                                         val startPt = l.points.first()
-                                                                        val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                                                                        val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                                                        val tw = state.staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                                                        val th = state.staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
                                                                         if (startPt.x < minX) minX = startPt.x
                                                                         if (startPt.y < minY) minY = startPt.y
                                                                         if (startPt.x + tw > maxX) maxX = startPt.x + tw
@@ -678,56 +372,56 @@ fun SNoteEditor(
                                                             if (minY <= maxY) {
                                                                 val cY = (minY + maxY) / 2f
                                                                 val cX = (minX + maxX) / 2f
-                                                                val topY = cY + (minY - cY) * selectionScale + selectionDragOffset.y
-                                                                val bottomY = cY + (maxY - cY) * selectionScale + selectionDragOffset.y
-                                                                val leftX = cX + (minX - cX) * selectionScale + selectionDragOffset.x
-                                                                val rightX = cX + (maxX - cX) * selectionScale + selectionDragOffset.x
-                                                                val gapPx = 24f * currentDensity
+                                                                val topY = cY + (minY - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
+                                                                val bottomY = cY + (maxY - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
+                                                                val leftX = cX + (minX - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                                                val rightX = cX + (maxX - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                                                val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
                                                                 
-                                                                val startPage = kotlin.math.floor(topY / pageHeightPx).toInt()
-                                                                val endPage = kotlin.math.floor(bottomY / pageHeightPx).toInt()
+                                                                val startPage = kotlin.math.floor(topY / state.pageHeightPx).toInt()
+                                                                val endPage = kotlin.math.floor(bottomY / state.pageHeightPx).toInt()
                                                                 
                                                                 var overlapsGap = false
                                                                 if (startPage != endPage) {
                                                                     overlapsGap = true // Crosses the boundary between pages
                                                                 } else {
-                                                                    val relativeBottom = bottomY % pageHeightPx
-                                                                    if (relativeBottom > pageHeightPx - gapPx) {
+                                                                    val relativeBottom = bottomY % state.pageHeightPx
+                                                                    if (relativeBottom > state.pageHeightPx - gapPx) {
                                                                         overlapsGap = true // Bottom touches the gap
                                                                     }
                                                                 }
                                                                 
-                                                                if (overlapsGap || topY < 0f || leftX < 0f || rightX > currentCanvasWidthPx) {
-                                                                    selectionDragOffset = dragStartOffset
-                                                                    selectionScale = dragStartScale
-                                                                } else if (selectionDragOffset != Offset.Zero || selectionScale != 1f) {
+                                                                if (overlapsGap || topY < 0f || leftX < 0f || rightX > state.currentCanvasWidthPx) {
+                                                                    viewModel.selectionDragOffset = dragStartOffset
+                                                                    viewModel.selectionScale = dragStartScale
+                                                                } else if (viewModel.selectionDragOffset != androidx.compose.ui.geometry.Offset.Zero || viewModel.selectionScale != 1f) {
                                                                     if (viewModel.preLassoState != null) {
                                                                         viewModel.pushUndoState(viewModel.preLassoState!!)
                                                                     }
-                                                                    val finalizedLines = selectedLines.map { l ->
+                                                                    val finalizedLines = viewModel.selectedLines.map { l ->
                                                                         l.copy(
                                                                             points = l.points.map { p ->
-                                                                                Offset(
-                                                                                    cX + (p.x - cX) * selectionScale + selectionDragOffset.x,
-                                                                                    cY + (p.y - cY) * selectionScale + selectionDragOffset.y
+                                                                                androidx.compose.ui.geometry.Offset(
+                                                                                    cX + (p.x - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x,
+                                                                                    cY + (p.y - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
                                                                                 )
                                                                             },
-                                                                            strokeWidth = l.strokeWidth * selectionScale
+                                                                            strokeWidth = l.strokeWidth * viewModel.selectionScale
                                                                         )
                                                                     }
-                                                                    selectedLines.clear()
-                                                                    selectedLines.addAll(finalizedLines)
-                                                                    selectionDragOffset = Offset.Zero
-                                                                    selectionScale = 1f
+                                                                    viewModel.selectedLines.clear()
+                                                                    viewModel.selectedLines.addAll(finalizedLines)
+                                                                    viewModel.selectionDragOffset = androidx.compose.ui.geometry.Offset.Zero
+                                                                    viewModel.selectionScale = 1f
                                                                 }
                                                                 viewModel.preLassoState = null
                                                                 commitChanges()
                                                             }
                                                         }
-                                                    } else if (lassoPath != null) {
+                                                    } else if (viewModel.lassoPath != null) {
                                                         // Lasso drawing finished, calculate enclosed lines
-                                                        val capturedLassoPath = lassoPath!!
-                                                        lassoPath = null
+                                                        val capturedLassoPath = viewModel.lassoPath!!
+                                                        viewModel.lassoPath = null
                                                         
                                                         val newSelection = mutableListOf<DrawingLine>()
                                                         val remainingLines = mutableListOf<DrawingLine>()
@@ -739,7 +433,7 @@ fun SNoteEditor(
                                                         val maxY = capturedLassoPath.maxOfOrNull { it.y } ?: 0f
                                                         val lassoRect = androidx.compose.ui.geometry.Rect(minX, minY, maxX, maxY)
                                                         
-                                                        for ((index, l) in drawingLines.withIndex()) {
+                                                        for ((index, l) in viewModel.drawingLines.withIndex()) {
                                                             if (l.points.isEmpty()) continue
 
                                                             if (l.isEraser) {
@@ -750,8 +444,8 @@ fun SNoteEditor(
                                                             // Fast precise geometry intersection that mathematically ignores ANY points visually "covered" by subsequent erasers
                                                             val isSelected = if (l.text != null && l.points.isNotEmpty()) {
                                                                 val startPt = l.points.first()
-                                                                val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                                                                val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                                                val tw = state.staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                                                val th = state.staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
                                                                 val cX = startPt.x + tw / 2f
                                                                 val cY = startPt.y + th / 2f
                                                                 val ptsToCheck = listOf(
@@ -768,8 +462,8 @@ fun SNoteEditor(
                                                                     if (!isPointInPolygon(pt, capturedLassoPath)) return@any false
                                                                     if (l.text != null) return@any true
                                                                     var pointErased = false
-                                                                    for (j in index + 1 until drawingLines.size) {
-                                                                        val e = drawingLines[j]
+                                                                    for (j in index + 1 until viewModel.drawingLines.size) {
+                                                                        val e = viewModel.drawingLines[j]
                                                                         if (e.isEraser) {
                                                                             val rSq = e.strokeWidth * e.strokeWidth
                                                                             for (ept in e.points) {
@@ -796,17 +490,17 @@ fun SNoteEditor(
 
 
                                                         if (newSelection.isNotEmpty()) {
-                                                            drawingLines.clear()
-                                                            drawingLines.addAll(remainingLines)
-                                                            selectedLines.addAll(newSelection)
-                                                            selectionDragOffset = Offset.Zero
-                                                            selectionScale = 1f
+                                                            viewModel.drawingLines.clear()
+                                                            viewModel.drawingLines.addAll(remainingLines)
+                                                            viewModel.selectedLines.addAll(newSelection)
+                                                            viewModel.selectionDragOffset = Offset.Zero
+                                                            viewModel.selectionScale = 1f
                                                         }
                                                     }
-                                                } else if (!isTextMode && currentPath != null) {
+                                                } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
                                                     viewModel.pushUndoState()
-                                                    drawingLines.add(currentProperties.copy(points = currentPath!!))
-                                                    currentPath = null
+                                                    viewModel.drawingLines.add(viewModel.currentProperties.copy(points = viewModel.currentPath!!))
+                                                    viewModel.currentPath = null
                                                     commitChanges()
                                                 }
                                             }
@@ -815,34 +509,62 @@ fun SNoteEditor(
                                 }
                         ) {
                             // Draw saved lines
-                            drawingLines.forEach { line ->
+                            viewModel.drawingLines.forEach { line ->
                                 if (line.text != null && line.points.isNotEmpty()) {
                                     return@forEach // Rendered natively via Jetpack Compose Text overlay instead of raw Canvas
                                 }
 
                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
-                                drawSNoteLine(
-                                    line = line.copy(color = activeLineColor),
+                                val finalColor = when {
+                                    line.isEraser -> Color.Black
+                                    line.isHighlighter -> activeLineColor.copy(alpha = 0.4f)
+                                    else -> activeLineColor
+                                }
+                                val finalBlendMode = when {
+                                    line.isEraser -> androidx.compose.ui.graphics.BlendMode.Clear
+                                    line.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
+                                    else -> androidx.compose.ui.graphics.BlendMode.SrcOver
+                                }
+                                drawPath(
                                     path = line.toPath(),
-                                    strokeColor = strokeColor,
-                                    eraserColor = eraserColor
+                                    color = finalColor, // Color ignored for Clear blend mode
+                                    style = Stroke(
+                                        width = line.strokeWidth,
+                                        cap = if (line.isHighlighter) StrokeCap.Square else StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    ),
+                                    blendMode = finalBlendMode
                                 )
                             }
 
                             // Draw active line
-                            currentPath?.let { pathOffsets ->
-                                val activeLine = currentProperties.copy(points = pathOffsets)
+                            viewModel.currentPath?.let { pathOffsets ->
+                                val activeLine = viewModel.currentProperties.copy(points = pathOffsets)
                                 val activeLineColor = if (activeLine.color == Color.Unspecified || activeLine.color == Color.Black || activeLine.color == Color.White) strokeColor else activeLine.color
-                                drawSNoteLine(
-                                    line = activeLine.copy(color = activeLineColor),
+                                val finalColor = when {
+                                    activeLine.isEraser -> Color.Black
+                                    activeLine.isHighlighter -> activeLineColor.copy(alpha = 0.4f)
+                                    else -> activeLineColor
+                                }
+                                val finalBlendMode = when {
+                                    activeLine.isEraser -> androidx.compose.ui.graphics.BlendMode.Clear
+                                    activeLine.isHighlighter -> androidx.compose.ui.graphics.BlendMode.Multiply
+                                    else -> androidx.compose.ui.graphics.BlendMode.SrcOver
+                                }
+                                drawPath(
                                     path = activeLine.toPath(),
-                                    strokeColor = strokeColor,
-                                    eraserColor = eraserColor
+                                    color = finalColor,
+                                    style = Stroke(
+                                        width = activeLine.strokeWidth,
+                                        cap = if (activeLine.isHighlighter) StrokeCap.Square else StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    ),
+                                    blendMode = finalBlendMode
                                 )
                             }
 
                             // Draw lasso path
-                            lassoPath?.let { lPath ->
+                            viewModel.lassoPath?.let { lPath ->
                                 val p = Path()
                                 lPath.forEachIndexed { index, point ->
                                     if (index == 0) p.moveTo(point.x, point.y) else p.lineTo(point.x, point.y)
@@ -858,19 +580,19 @@ fun SNoteEditor(
                             }
                             
                             // Draw selected lines (dragged)
-                            if (selectedLines.isNotEmpty()) {
+                            if (viewModel.selectedLines.isNotEmpty()) {
                                 // Draw bounding box
                                     var minX = Float.MAX_VALUE
                                     var minY = Float.MAX_VALUE
                                     var maxX = Float.MIN_VALUE
                                     var maxY = Float.MIN_VALUE
 
-                                    selectedLines.forEach { l ->
+                                    viewModel.selectedLines.forEach { l ->
                                         if (l.isEraser) return@forEach
                                         if (l.text != null && l.points.isNotEmpty()) {
                                             val startPt = l.points.first()
-                                            val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                                            val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                            val tw = state.staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                            val th = state.staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
                                             if (startPt.x < minX) minX = startPt.x
                                             if (startPt.y < minY) minY = startPt.y
                                             if (startPt.x + tw > maxX) maxX = startPt.x + tw
@@ -888,7 +610,7 @@ fun SNoteEditor(
                                     val cX = (minX + maxX) / 2f
                                     val cY = (minY + maxY) / 2f
 
-                                    selectedLines.forEach { l ->
+                                    viewModel.selectedLines.forEach { l ->
                                         val activeLineColor = if (l.color == Color.Unspecified || l.color == Color.Black || l.color == Color.White) strokeColor else l.color
                                         val finalColor = when {
                                             l.isEraser -> Color.Black
@@ -904,8 +626,8 @@ fun SNoteEditor(
                                         
                                         val offsetPath = Path()
                                         l.points.forEachIndexed { idx, pt ->
-                                            val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
-                                            val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+                                            val pX = cX + (pt.x - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                            val pY = cY + (pt.y - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
 
                                             if (idx == 0) offsetPath.moveTo(pX, pY) else offsetPath.lineTo(pX, pY)
                                         }
@@ -914,7 +636,7 @@ fun SNoteEditor(
                                             path = offsetPath,
                                             color = finalColor,
                                             style = Stroke(
-                                                width = l.strokeWidth * selectionScale,
+                                                width = l.strokeWidth * viewModel.selectionScale,
                                                 cap = if (l.isHighlighter) StrokeCap.Square else StrokeCap.Round,
                                                 join = StrokeJoin.Round
                                             ),
@@ -924,10 +646,10 @@ fun SNoteEditor(
                                 
                                 // Dashed selection bounds
                                 if (minX < maxX && minY < maxY) {
-                                    val sMinX = cX + (minX - cX) * selectionScale + selectionDragOffset.x
-                                    val sMinY = cY + (minY - cY) * selectionScale + selectionDragOffset.y
-                                    val sMaxX = cX + (maxX - cX) * selectionScale + selectionDragOffset.x
-                                    val sMaxY = cY + (maxY - cY) * selectionScale + selectionDragOffset.y
+                                    val sMinX = cX + (minX - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                    val sMinY = cY + (minY - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
+                                    val sMaxX = cX + (maxX - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                    val sMaxY = cY + (maxY - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
 
                                     val boundsPadding = 16f
                                     drawRect(
@@ -968,7 +690,7 @@ fun SNoteEditor(
                         }
 
                         // Render Static Text natively via Compose to fix multi-line metrics and Android's Canvas jump disparities
-                        drawingLines.forEach { line ->
+                        viewModel.drawingLines.forEach { line ->
                             if (line.text != null && line.points.isNotEmpty()) {
                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
                                 val xPosDp = with(LocalDensity.current) { line.points.first().x.toDp() }
@@ -976,12 +698,12 @@ fun SNoteEditor(
                                 Text(
                                     text = line.text,
                                     onTextLayout = { textLayoutResult ->
-                                        staticTextLayouts[line] = textLayoutResult
+                                        state.staticTextLayouts[line] = textLayoutResult
                                         val bottomY = line.points.first().y + textLayoutResult.size.height
-                                        if (pageHeightPx > 0) {
-                                            val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
-                                            if (neededPages > pageCount) {
-                                                pageCount = neededPages
+                                        if (state.pageHeightPx > 0) {
+                                            val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
+                                            if (neededPages > viewModel.pageCount) {
+                                                viewModel.pageCount = neededPages
                                             }
                                         }
                                     },
@@ -993,7 +715,7 @@ fun SNoteEditor(
                                     style = androidx.compose.ui.text.TextStyle(
                                         color = activeLineColor,
                                         fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() },
-                                        lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
+                                        lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
                                         lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
                                             alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
                                             trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
@@ -1007,17 +729,17 @@ fun SNoteEditor(
                         }
 
                         // Render Selected Text dynamically while dragging/scaling
-                        if (selectedLines.isNotEmpty()) {
+                        if (viewModel.selectedLines.isNotEmpty()) {
                             var minX = Float.MAX_VALUE
                             var minY = Float.MAX_VALUE
                             var maxX = Float.MIN_VALUE
                             var maxY = Float.MIN_VALUE
-                            selectedLines.forEach { l ->
+                            viewModel.selectedLines.forEach { l ->
                                 if (l.isEraser) return@forEach
                                 if (l.text != null && l.points.isNotEmpty()) {
                                     val startPt = l.points.first()
-                                    val tw = staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-                                    val th = staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
+                                    val tw = state.staticTextLayouts[l]?.size?.width?.toFloat() ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
+                                    val th = state.staticTextLayouts[l]?.size?.height?.toFloat() ?: (l.strokeWidth * 1.5f)
                                     if (startPt.x < minX) minX = startPt.x
                                     if (startPt.y < minY) minY = startPt.y
                                     if (startPt.x + tw > maxX) maxX = startPt.x + tw
@@ -1035,12 +757,12 @@ fun SNoteEditor(
                             val cX = if (minX < maxX) (minX + maxX) / 2f else 0f
                             val cY = if (minY < maxY) (minY + maxY) / 2f else 0f
 
-                            selectedLines.forEach { line ->
+                            viewModel.selectedLines.forEach { line ->
                                 if (line.text != null && line.points.isNotEmpty()) {
                                     val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
                                     val pt = line.points.first()
-                                    val pX = cX + (pt.x - cX) * selectionScale + selectionDragOffset.x
-                                    val pY = cY + (pt.y - cY) * selectionScale + selectionDragOffset.y
+                                    val pX = cX + (pt.x - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                    val pY = cY + (pt.y - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
                                     
                                     val xPosDp = with(LocalDensity.current) { pX.coerceAtLeast(0f).toDp() }
                                     val maxTextWidth = (availableWidth - xPosDp - 4.dp).coerceAtLeast(10.dp)
@@ -1052,8 +774,8 @@ fun SNoteEditor(
                                             .widthIn(max = maxTextWidth),
                                         style = androidx.compose.ui.text.TextStyle(
                                             color = activeLineColor.copy(alpha = 0.7f),
-                                            fontSize = with(LocalDensity.current) { (line.strokeWidth * selectionScale).coerceAtLeast(1f).toSp() },
-                                            lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f * selectionScale).coerceAtLeast(1f).toSp() },
+                                            fontSize = with(LocalDensity.current) { (line.strokeWidth * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
+                                            lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE) * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
                                             lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
                                                 alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
                                                 trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
@@ -1068,30 +790,29 @@ fun SNoteEditor(
                         }
 
                         // Lasso Context Menu
-                        if (showLassoMenu && selectedLines.isNotEmpty()) {
-                            val xPosDp = with(LocalDensity.current) { lassoMenuPosition.x.toDp() }
-                            val yPosDp = with(LocalDensity.current) { lassoMenuPosition.y.toDp() }
+                        if (state.showLassoMenu && viewModel.selectedLines.isNotEmpty()) {
+                            val xPosDp = with(LocalDensity.current) { state.lassoMenuPosition.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { state.lassoMenuPosition.y.toDp() }
                             Box(modifier = Modifier.offset(x = xPosDp, y = yPosDp)) {
                                 DropdownMenu(
-                                    expanded = showLassoMenu,
-                                    onDismissRequest = { showLassoMenu = false }
+                                    expanded = state.showLassoMenu,
+                                    onDismissRequest = { state.showLassoMenu = false }
                                 ) {
                                     DropdownMenuItem(
                                         text = { Text("Colour") },
                                         leadingIcon = { Icon(Icons.Default.Create, contentDescription = "Colour") },
                                         onClick = {
-                                            showLassoMenu = false
-                                            showLassoColorPicker = true
+                                            state.showLassoMenu = false
+                                            state.showLassoColorPicker = true
                                         }
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Delete") },
                                         leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "Delete") },
                                         onClick = {
-                                            viewModel.pushUndoState(drawingLines.toList() + selectedLines.toList())
-                                            drawingLines.removeAll(selectedLines)
-                                            selectedLines.clear()
-                                            showLassoMenu = false
+                                            viewModel.drawingLines.removeAll(viewModel.selectedLines)
+                                            viewModel.selectedLines.clear()
+                                            state.showLassoMenu = false
                                         }
                                     )
                                 }
@@ -1099,13 +820,13 @@ fun SNoteEditor(
                         }
 
                         // Lasso Color Picker
-                        if (showLassoColorPicker && selectedLines.isNotEmpty()) {
-                            val xPosDp = with(LocalDensity.current) { lassoMenuPosition.x.toDp() }
-                            val yPosDp = with(LocalDensity.current) { lassoMenuPosition.y.toDp() }
+                        if (state.showLassoColorPicker && viewModel.selectedLines.isNotEmpty()) {
+                            val xPosDp = with(LocalDensity.current) { state.lassoMenuPosition.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { state.lassoMenuPosition.y.toDp() }
                             Box(modifier = Modifier.offset(x = xPosDp, y = yPosDp)) {
                                 DropdownMenu(
-                                    expanded = showLassoColorPicker,
-                                    onDismissRequest = { showLassoColorPicker = false },
+                                    expanded = state.showLassoColorPicker,
+                                    onDismissRequest = { state.showLassoColorPicker = false },
                                     modifier = Modifier.width(64.dp)
                                 ) {
                                     val penCols = listOf(Color.Unspecified) + ALLOWED_PEN_COLORS
@@ -1122,17 +843,17 @@ fun SNoteEditor(
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.pushUndoState(drawingLines.toList() + selectedLines.toList())
-                                                val newSelection = selectedLines.map { l -> l.copy(color = c) }
-                                                selectedLines.clear()
-                                                selectedLines.addAll(newSelection)
+                                                viewModel.pushUndoState(viewModel.drawingLines.toList() + viewModel.selectedLines.toList())
+                                                val newSelection = viewModel.selectedLines.map { l -> l.copy(color = c) }
+                                                viewModel.selectedLines.clear()
+                                                viewModel.selectedLines.addAll(newSelection)
                                                 if (c != Color.Unspecified) {
-                                                    updatePenColor(c.value.toLong())
+                                                    state.updatePenColor(c.value.toLong())
                                                 } else {
-                                                    updatePenColor(Color.Unspecified.value.toLong())
+                                                    state.updatePenColor(Color.Unspecified.value.toLong())
                                                 }
-                                                showLassoColorPicker = false
-                                                commitLassoSelection()
+                                                state.showLassoColorPicker = false
+                                                state.commitLassoSelection { commitChanges() }
                                             }
                                         )
                                     }
@@ -1141,11 +862,11 @@ fun SNoteEditor(
                         }
 
                         // Inline Text Tool Layer
-                        if (activeTextInputPosition != null) {
-                            val cVal = Color(currentColorValue.toULong())
+                        if (viewModel.activeTextInputPosition != null) {
+                            val cVal = Color(state.currentColorValue.toULong())
                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
-                            val xPosDp = with(LocalDensity.current) { activeTextInputPosition!!.x.toDp() }
-                            val yPosDp = with(LocalDensity.current) { activeTextInputPosition!!.y.toDp() }
+                            val xPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.x.toDp() }
+                            val yPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.y.toDp() }
                             val maxTextWidth = availableWidth - xPosDp - 4.dp
 
                             Column {
@@ -1153,20 +874,20 @@ fun SNoteEditor(
                                 Row {
                                     Spacer(modifier = Modifier.width(xPosDp))
                                     BasicTextField(
-                                        value = activeTextValue,
+                                        value = viewModel.activeTextValue,
                                         onValueChange = {
-                                            if (it.text.length - activeTextValue.text.length > 50) {
-                                                needsAutoCommitAfterPaste = true
+                                            if (it.text.length - viewModel.activeTextValue.text.length > 50) {
+                                                state.needsAutoCommitAfterPaste = true
                                             }
-                                            activeTextValue = it
+                                            viewModel.activeTextValue = it
                                         },
                                         onTextLayout = { textLayoutResult ->
-                                            activeTextLayoutResult = textLayoutResult
-                                            val bottomY = activeTextInputPosition!!.y + textLayoutResult.size.height
-                                            if (pageHeightPx > 0) {
-                                                val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
-                                                if (neededPages > pageCount) {
-                                                    pageCount = neededPages
+                                            state.activeTextLayoutResult = textLayoutResult
+                                            val bottomY = viewModel.activeTextInputPosition!!.y + textLayoutResult.size.height
+                                            if (state.pageHeightPx > 0) {
+                                                val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
+                                                if (neededPages > viewModel.pageCount) {
+                                                    viewModel.pageCount = neededPages
                                                 }
                                             }
                                         },
@@ -1180,8 +901,8 @@ fun SNoteEditor(
                                         ),
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             color = chosenColor,
-                                            fontSize = with(LocalDensity.current) { currentTextSize.toSp() },
-                                            lineHeight = with(LocalDensity.current) { (TEXT_LARGE * 1.2f).toSp() },
+                                            fontSize = with(LocalDensity.current) { state.currentTextSize.toSp() },
+                                            lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
                                             lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
                                                 alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
                                                 trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
@@ -1195,15 +916,15 @@ fun SNoteEditor(
                                 }
                             }
 
-                            LaunchedEffect(activeTextInputPosition, activeTextLayoutResult, availableHeight) {
+                            LaunchedEffect(viewModel.activeTextInputPosition, state.activeTextLayoutResult, availableHeight) {
                                 // Trigger scroll whenever position is initially clicked and layout is ready
-                                if (activeTextLayoutResult != null) {
+                                if (state.activeTextLayoutResult != null) {
                                     kotlinx.coroutines.delay(50) // Brief delay to let IME padding settle
                                     try {
-                                        val cursorOffset = activeTextValue.selection.end.coerceIn(0, activeTextLayoutResult!!.layoutInput.text.text.length)
-                                        val cursorRect = activeTextLayoutResult!!.getCursorRect(cursorOffset)
-                                        val absoluteCursorTop = activeTextInputPosition!!.y + cursorRect.top - 60f
-                                        val absoluteCursorBottom = activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                        val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, state.activeTextLayoutResult!!.layoutInput.text.text.length)
+                                        val cursorRect = state.activeTextLayoutResult!!.getCursorRect(cursorOffset)
+                                        val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
+                                        val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
                                         val viewportTop = scrollState.value.toFloat()
                                         val currentViewportHeight = with(density) { availableHeight.toPx() }
                                         val viewportBottom = viewportTop + currentViewportHeight
@@ -1217,18 +938,18 @@ fun SNoteEditor(
                                 }
                             }
 
-                            LaunchedEffect(activeTextValue.text, activeTextValue.selection, availableHeight) {
+                            LaunchedEffect(viewModel.activeTextValue.text, viewModel.activeTextValue.selection, availableHeight) {
                                 kotlinx.coroutines.delay(10)
-                                if (needsAutoCommitAfterPaste && activeTextLayoutResult != null) {
-                                    needsAutoCommitAfterPaste = false
+                                if (state.needsAutoCommitAfterPaste && state.activeTextLayoutResult != null) {
+                                    state.needsAutoCommitAfterPaste = false
                                     commitActiveText()
                                 }
-                                activeTextLayoutResult?.let {
+                                state.activeTextLayoutResult?.let {
                                     try {
-                                        val cursorOffset = activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
+                                        val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
                                         val cursorRect = it.getCursorRect(cursorOffset)
-                                        val absoluteCursorTop = activeTextInputPosition!!.y + cursorRect.top - 60f
-                                        val absoluteCursorBottom = activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                        val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
+                                        val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
                                         val viewportTop = scrollState.value.toFloat()
                                         val currentViewportHeight = with(density) { availableHeight.toPx() }
                                         val viewportBottom = viewportTop + currentViewportHeight
@@ -1244,7 +965,7 @@ fun SNoteEditor(
                                 commitChanges()
                             }
 
-                            LaunchedEffect(activeTextInputPosition) {
+                            LaunchedEffect(viewModel.activeTextInputPosition) {
                                 kotlinx.coroutines.delay(100)
                                 try {
                                     focusRequester.requestFocus()
@@ -1256,8 +977,8 @@ fun SNoteEditor(
                         }
 
                         // Overlay page numbers
-                        for (i in 0 until pageCount) {
-                            val bottomY = pageHeightDp * (i + 1) - 34.dp
+                        for (i in 0 until viewModel.pageCount) {
+                            val bottomY = state.pageHeightDp * (i + 1) - 34.dp
                             Text(
                                 text = "Page ${i + 1}",
                                 color = androidx.compose.ui.graphics.Color.Gray,
@@ -1272,34 +993,7 @@ fun SNoteEditor(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
-                } // End if (pageHeightDp > 0.dp)
+                } // End if (state.pageHeightDp > 0.dp)
                 } // End Box(verticalScroll)
-            } // End BoxWithConstraints
-        }
-
-        if (showClearWarning) {
-            AlertDialog(
-                onDismissRequest = { showClearWarning = false },
-                title = { Text("Clear All") },
-                text = { Text("Are you sure you want to clear the entire drawing? This action cannot be undone.") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            drawingLines.clear()
-                            commitChanges()
-                            showClearWarning = false
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Clear")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showClearWarning = false }) {
-                        Text("Cancel")
-                    }
-                }
-            )
-        }
-    }
+            }
 }

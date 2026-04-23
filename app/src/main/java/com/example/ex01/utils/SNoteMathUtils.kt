@@ -1,4 +1,5 @@
 package com.example.ex01.utils
+import com.example.ex01.ui.editor.snote.SNoteConfig
 
 import androidx.compose.ui.geometry.Offset
 import com.example.ex01.ui.editor.snote.DrawingLine
@@ -45,7 +46,7 @@ fun isPointInSelectionBounds(
     val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
     val sMaxY = cY + (maxY - cY) * scale + dragOffset.y
 
-    val boundsPadding = 24f
+    val boundsPadding = SNoteConfig.PAGE_GAP_DP
     return point.x in (sMinX - boundsPadding)..(sMaxX + boundsPadding) &&
            point.y in (sMinY - boundsPadding)..(sMaxY + boundsPadding)
 }
