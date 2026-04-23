@@ -79,12 +79,12 @@ fun NoteEditScreen(
     }
 
     var noteResolved by remember(noteId) { mutableStateOf(false) }
-    var draftInitialized by rememberSaveable(noteId) { mutableStateOf(false) }
-    var noteTitle by rememberSaveable(noteId) { mutableStateOf("") }
-    var serializedPagesBody by rememberSaveable(noteId) { mutableStateOf("") }
-    var selectedPageIndex by rememberSaveable(noteId) { mutableIntStateOf(0) }
+    var draftInitialized by remember(noteId) { mutableStateOf(false) }
+    var noteTitle by remember(noteId) { mutableStateOf("") }
+    var serializedPagesBody by remember(noteId) { mutableStateOf("") }
+    var selectedPageIndex by remember(noteId) { mutableIntStateOf(0) }
     val pageControllers = remember(noteId) { mutableMapOf<Int, RichTextEditorController>() }
-    var newItemText by rememberSaveable(noteId) { mutableStateOf("") }
+    var newItemText by remember(noteId) { mutableStateOf("") }
 
     var isSaving by remember { mutableStateOf(false) }
     var showSNoteMenu by remember { mutableStateOf(false) }
@@ -117,6 +117,7 @@ fun NoteEditScreen(
                 isSaving = true
                 @Suppress("OPT_IN_USAGE")
                 GlobalScope.launch(Dispatchers.IO) {
+                    kotlinx.coroutines.delay(450) // Wait for the Compose exit slide animation to fully complete
                     viewModel.updateNoteSync(updatedNote)
                     try {
                         viewModel.triggerWidgetUpdate()
