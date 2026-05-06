@@ -52,6 +52,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.sp
 import com.example.ex01.utils.*
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.draw.clipToBounds
 
 @Composable
 fun SNoteCanvas(
@@ -274,8 +275,21 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                                     commitActiveText()
 
                                                     val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
+                                                    
+                                                    // Check if tap position is in a page gap - if so, reject text placement
+                                                    if (state.pageHeightPx > 0f) {
+                                                        val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                                        val pageIndex = kotlin.math.floor(tapPos.y / state.pageHeightPx).toInt()
+                                                        val pageStart = pageIndex * state.pageHeightPx
+                                                        val contentEnd = pageStart + state.pageHeightPx - gapPx
+                                                        val isInGap = tapPos.y >= contentEnd && tapPos.y < pageStart + state.pageHeightPx
+                                                        if (isInGap) {
+                                                            continue // Reject text placement in gap
+                                                        }
+                                                    }
+                                                    
+                                                    val targetY = SNoteConfig.snapYToRow(tapPos.y, state.pageHeightPx, rowHeight, state.currentDensity)
                                                     val clickedRowIndex = (tapPos.y / rowHeight).toInt()
-                                                    val targetY = clickedRowIndex * rowHeight
 
                                                     var hitIndex = -1
                                                     for (i in viewModel.drawingLines.indices.reversed()) {
@@ -334,7 +348,22 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                                         commitChanges()
                                                     } else {
                                                         val defaultIndent = with(density) { 16.dp.toPx() }
-                                                        viewModel.activeTextInputPosition = Offset(defaultIndent, targetY)
+                                                        // Final safety check: ensure targetY is never in a gap
+                                                        val finalY = if (state.pageHeightPx > 0f) {
+                                                            val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                                            val pageIdx = kotlin.math.floor(targetY / state.pageHeightPx).toInt()
+                                                            val pageStart = pageIdx * state.pageHeightPx
+                                                            val contentEnd = pageStart + state.pageHeightPx - gapPx
+                                                            if (targetY >= contentEnd && targetY < pageStart + state.pageHeightPx) {
+                                                                // In gap - snap to previous valid position
+                                                                contentEnd - rowHeight
+                                                            } else {
+                                                                targetY
+                                                            }
+                                                        } else {
+                                                            targetY
+                                                        }
+                                                        viewModel.activeTextInputPosition = Offset(defaultIndent, finalY)
                                                         viewModel.activeTextValue = TextFieldValue("")
                                                         commitChanges()
                                                     }
@@ -690,43 +719,55 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         }
 
                         // Render Static Text natively via Compose to fix multi-line metrics and Android's Canvas jump disparities
-                        viewModel.drawingLines.forEach { line ->
-                            if (line.text != null && line.points.isNotEmpty()) {
-                                val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
-                                val xPosDp = with(LocalDensity.current) { line.points.first().x.toDp() }
-                                val maxTextWidth = availableWidth - xPosDp - 4.dp
-                                Text(
-                                    text = line.text,
-                                    onTextLayout = { textLayoutResult ->
-                                        state.staticTextLayouts[line] = textLayoutResult
-                                        val bottomY = line.points.first().y + textLayoutResult.size.height
-                                        if (state.pageHeightPx > 0) {
-                                            val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
-                                            if (neededPages > viewModel.pageCount) {
-                                                viewModel.pageCount = neededPages
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .offset {
-                                            IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
-                                        }
-                                        .widthIn(max = maxTextWidth),
-                                    style = androidx.compose.ui.text.TextStyle(
-                                        color = activeLineColor,
-                                        fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() },
-                                        lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
-                                        lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                                            alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                                            trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
-                                        ),
-                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                            includeFontPadding = false
-                                        )
-                                    )
-                                )
-                            }
-                        }
+                         viewModel.drawingLines.forEach { line ->
+                             if (line.text != null && line.points.isNotEmpty()) {
+                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
+                                 val xPosDp = with(LocalDensity.current) { line.points.first().x.toDp() }
+                                 val maxTextWidth = availableWidth - xPosDp - 4.dp
+                                 val y = line.points.first().y
+                                 val pageIndex = kotlin.math.floor(y / state.pageHeightPx).toInt()
+                                 val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                 val contentEnd = (pageIndex + 1) * state.pageHeightPx - gapPx
+                                 val maxHeightPx = kotlin.math.max(0f, contentEnd - y)
+                                 val maxHeightDp = with(LocalDensity.current) { maxHeightPx.toDp() }
+                                 Box(
+                                     modifier = Modifier
+                                         .offset {
+                                             IntOffset(kotlin.math.round(line.points.first().x).toInt(), kotlin.math.round(line.points.first().y).toInt())
+                                         }
+                                         .widthIn(max = maxTextWidth)
+                                         .heightIn(max = maxHeightDp)
+                                         .clipToBounds()
+                                 ) {
+                                     Text(
+                                         text = line.text,
+                                         onTextLayout = { textLayoutResult: androidx.compose.ui.text.TextLayoutResult ->
+                                             state.staticTextLayouts[line] = textLayoutResult
+                                             val bottomY = line.points.first().y + textLayoutResult.size.height
+                                             if (state.pageHeightPx > 0) {
+                                                 val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
+                                                 if (neededPages > viewModel.pageCount) {
+                                                     viewModel.pageCount = neededPages
+                                                 }
+                                             }
+                                         },
+                                         modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                                         style = androidx.compose.ui.text.TextStyle(
+                                             color = activeLineColor,
+                                             fontSize = with(LocalDensity.current) { line.strokeWidth.toSp() },
+                                             lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
+                                             lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                                 alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                                 trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                             ),
+                                             platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                 includeFontPadding = false
+                                             )
+                                         )
+                                     )
+                                 }
+                             }
+                         }
 
                         // Render Selected Text dynamically while dragging/scaling
                         if (viewModel.selectedLines.isNotEmpty()) {
@@ -758,35 +799,47 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                             val cY = if (minY < maxY) (minY + maxY) / 2f else 0f
 
                             viewModel.selectedLines.forEach { line ->
-                                if (line.text != null && line.points.isNotEmpty()) {
-                                    val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
-                                    val pt = line.points.first()
-                                    val pX = cX + (pt.x - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
-                                    val pY = cY + (pt.y - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
-                                    
-                                    val xPosDp = with(LocalDensity.current) { pX.coerceAtLeast(0f).toDp() }
-                                    val maxTextWidth = (availableWidth - xPosDp - 4.dp).coerceAtLeast(10.dp)
-                                    
-                                    Text(
-                                        text = line.text,
-                                        modifier = Modifier
-                                            .offset { IntOffset(kotlin.math.round(pX).toInt(), kotlin.math.round(pY).toInt()) }
-                                            .widthIn(max = maxTextWidth),
-                                        style = androidx.compose.ui.text.TextStyle(
-                                            color = activeLineColor.copy(alpha = 0.7f),
-                                            fontSize = with(LocalDensity.current) { (line.strokeWidth * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
-                                            lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE) * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
-                                            lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                                                alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                                                trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
-                                            ),
-                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                                includeFontPadding = false
-                                            )
-                                        )
-                                    )
-                                }
-                            }
+                                 if (line.text != null && line.points.isNotEmpty()) {
+                                     val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
+                                     val pt = line.points.first()
+                                     val pX = cX + (pt.x - cX) * viewModel.selectionScale + viewModel.selectionDragOffset.x
+                                     val pY = cY + (pt.y - cY) * viewModel.selectionScale + viewModel.selectionDragOffset.y
+
+                                     val xPosDp = with(LocalDensity.current) { pX.coerceAtLeast(0f).toDp() }
+                                     val maxTextWidth = (availableWidth - xPosDp - 4.dp).coerceAtLeast(10.dp)
+                                     val y = pY
+                                     val pageIndex = kotlin.math.floor(y / state.pageHeightPx).toInt()
+                                     val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                     val contentEnd = (pageIndex + 1) * state.pageHeightPx - gapPx
+                                     val maxHeightPx = kotlin.math.max(0f, contentEnd - y)
+                                     val maxHeightDp = with(LocalDensity.current) { maxHeightPx.toDp() }
+
+                                     Box(
+                                         modifier = Modifier
+                                             .offset { IntOffset(kotlin.math.round(pX).toInt(), kotlin.math.round(pY).toInt()) }
+                                             .widthIn(max = maxTextWidth)
+                                             .heightIn(max = maxHeightDp)
+                                             .clipToBounds()
+                                     ) {
+                                         Text(
+                                             text = line.text,
+                                             modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                                             style = androidx.compose.ui.text.TextStyle(
+                                                 color = activeLineColor.copy(alpha = 0.7f),
+                                                 fontSize = with(LocalDensity.current) { (line.strokeWidth * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
+                                                 lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE) * viewModel.selectionScale).coerceAtLeast(1f).toSp() },
+                                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                                     alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                                     trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                                 ),
+                                                 platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                     includeFontPadding = false
+                                                 )
+                                             )
+                                         )
+                                     }
+                                 }
+                             }
                         }
 
                         // Lasso Context Menu
@@ -862,118 +915,262 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         }
 
                         // Inline Text Tool Layer
-                        if (viewModel.activeTextInputPosition != null) {
-                            val cVal = Color(state.currentColorValue.toULong())
-                            val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
-                            val xPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.x.toDp() }
-                            val yPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.y.toDp() }
-                            val maxTextWidth = availableWidth - xPosDp - 4.dp
+                         if (viewModel.activeTextInputPosition != null) {
+                             val cVal = Color(state.currentColorValue.toULong())
+                             val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else strokeColor
+                             val xPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.x.toDp() }
+                             val yPosDp = with(LocalDensity.current) { viewModel.activeTextInputPosition!!.y.toDp() }
+                             val maxTextWidth = availableWidth - xPosDp - 4.dp
+                             val y = viewModel.activeTextInputPosition!!.y
+                             val pageIndex = kotlin.math.floor(y / state.pageHeightPx).toInt()
+                             val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                             val contentEnd = (pageIndex + 1) * state.pageHeightPx - gapPx
+                             val maxHeightPx = kotlin.math.max(0f, contentEnd - y)
+                             val maxHeightDp = with(LocalDensity.current) { maxHeightPx.toDp() }
 
-                            Column {
-                                Spacer(modifier = Modifier.height(yPosDp))
-                                Row {
-                                    Spacer(modifier = Modifier.width(xPosDp))
-                                    BasicTextField(
-                                        value = viewModel.activeTextValue,
-                                        onValueChange = {
-                                            if (it.text.length - viewModel.activeTextValue.text.length > 50) {
-                                                state.needsAutoCommitAfterPaste = true
-                                            }
-                                            viewModel.activeTextValue = it
-                                        },
-                                        onTextLayout = { textLayoutResult ->
-                                            state.activeTextLayoutResult = textLayoutResult
-                                            val bottomY = viewModel.activeTextInputPosition!!.y + textLayoutResult.size.height
-                                            if (state.pageHeightPx > 0) {
-                                                val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
-                                                if (neededPages > viewModel.pageCount) {
-                                                    viewModel.pageCount = neededPages
+                             Box(
+                                 modifier = Modifier
+                                     .offset { IntOffset(kotlin.math.round(viewModel.activeTextInputPosition!!.x).toInt(), kotlin.math.round(viewModel.activeTextInputPosition!!.y).toInt()) }
+                                     .widthIn(max = maxTextWidth)
+                                     .heightIn(max = maxHeightDp)
+                                     .clipToBounds()
+                             ) {
+                                  BasicTextField(
+                                      value = viewModel.activeTextValue,
+                                      onValueChange = { newValue ->
+                                          // Enforce strict gap boundary - truncate text if it would overflow
+                                          var finalValue = newValue
+
+                                          if (state.pageHeightPx > 0f) {
+                                              val y = viewModel.activeTextInputPosition!!.y
+                                              val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                              val pageIndex = kotlin.math.floor(y / state.pageHeightPx).toInt()
+                                              val contentEnd = (pageIndex + 1) * state.pageHeightPx - gapPx
+                                              val maxAllowedHeightPx = kotlin.math.max(0f, contentEnd - y)
+
+                                              // Hard limit: if text would extend beyond available height, reject addition
+                                              if (newValue.text.length > viewModel.activeTextValue.text.length && state.activeTextLayoutResult != null) {
+                                                  try {
+                                                      val currentHeight = state.activeTextLayoutResult!!.size.height
+                                                      val rowHeight = SNoteConfig.getRowHeight(state.currentTextSize)
+
+                                                      // If current height + one more row exceeds boundary, prevent addition
+                                                      if (currentHeight + rowHeight > maxAllowedHeightPx) {
+                                                          return@BasicTextField
+                                                      }
+                                                  } catch (e: Exception) {}
+                                              }
+                                          }
+
+                                          if (finalValue.text.length - viewModel.activeTextValue.text.length > 50) {
+                                              state.needsAutoCommitAfterPaste = true
+                                          }
+                                          viewModel.activeTextValue = finalValue
+                                      },
+                                     onTextLayout = { textLayoutResult ->
+                                          state.activeTextLayoutResult = textLayoutResult
+                                          val bottomY = viewModel.activeTextInputPosition!!.y + textLayoutResult.size.height
+
+                                          // CRITICAL: Enforce maximum height constraint to prevent text entering gap
+                                          val rowHeight = SNoteConfig.getRowHeight(state.currentTextSize)
+                                          val maxAllowedHeight = maxHeightPx
+
+                                          // If text height tries to exceed limit, auto-commit immediately
+                                          if (textLayoutResult.size.height > maxAllowedHeight) {
+                                              if (viewModel.activeTextValue.text.isNotEmpty()) {
+                                                  commitActiveText()
+                                              }
+                                          }
+
+                                          // Secondary check: if text extends into next page's gap, auto-commit
+                                          if (state.pageHeightPx > 0f) {
+                                              val pageIdx = kotlin.math.floor(bottomY / state.pageHeightPx).toInt()
+                                              val pageStart = pageIdx * state.pageHeightPx
+                                              val contentEnd2 = pageStart + state.pageHeightPx - gapPx
+                                              if (bottomY > contentEnd2) {
+                                                  // Text extends into next page's gap - auto-commit this text
+                                                  if (viewModel.activeTextValue.text.isNotEmpty()) {
+                                                      commitActiveText()
+                                                  }
+                                              }
+                                          }
+
+                                          if (state.pageHeightPx > 0) {
+                                              val neededPages = kotlin.math.ceil((bottomY / state.pageHeightPx).toDouble()).toInt()
+                                              if (neededPages > viewModel.pageCount) {
+                                                  viewModel.pageCount = neededPages
+                                              }
+                                          }
+                                     },
+                                      modifier = Modifier
+                                          .bringIntoViewRequester(bringIntoViewRequester)
+                                          .fillMaxWidth()
+                                          .heightIn(max = maxHeightDp)
+                                          .focusRequester(focusRequester)
+                                          .background(Color.Transparent)
+                                          .clipToBounds(),
+                                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                         autoCorrectEnabled = false
+                                     ),
+                                     textStyle = androidx.compose.ui.text.TextStyle(
+                                         color = chosenColor,
+                                         fontSize = with(LocalDensity.current) { state.currentTextSize.toSp() },
+                                         lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
+                                         lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                                             alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+                                             trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
+                                         ),
+                                         platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                             includeFontPadding = false
+                                         )
+                                     ),
+                                     cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
+                                 )
+                             }
+
+                             LaunchedEffect(viewModel.activeTextInputPosition, state.activeTextLayoutResult, availableHeight) {
+                                 // Trigger scroll whenever position is initially clicked and layout is ready
+                                 if (state.activeTextLayoutResult != null) {
+                                     kotlinx.coroutines.delay(50) // Brief delay to let IME padding settle
+                                     try {
+                                         val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, state.activeTextLayoutResult!!.layoutInput.text.text.length)
+                                         val cursorRect = state.activeTextLayoutResult!!.getCursorRect(cursorOffset)
+                                         val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
+                                         val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                         val viewportTop = scrollState.value.toFloat()
+                                         val currentViewportHeight = with(density) { availableHeight.toPx() }
+                                         val viewportBottom = viewportTop + currentViewportHeight
+
+                                         if (absoluteCursorBottom > viewportBottom) {
+                                             scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                         } else if (absoluteCursorTop < viewportTop) {
+                                             scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                         }
+                                     } catch (e: Exception) {}
+                                 }
+                             }
+
+                             LaunchedEffect(viewModel.activeTextValue.text, viewModel.activeTextValue.selection, availableHeight) {
+                                 kotlinx.coroutines.delay(10)
+                                 if (state.needsAutoCommitAfterPaste && state.activeTextLayoutResult != null) {
+                                     state.needsAutoCommitAfterPaste = false
+                                     commitActiveText()
+                                 }
+                                 state.activeTextLayoutResult?.let {
+                                     try {
+                                         val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
+                                         val cursorRect = it.getCursorRect(cursorOffset)
+                                         val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
+                                         val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
+                                         val viewportTop = scrollState.value.toFloat()
+                                         val currentViewportHeight = with(density) { availableHeight.toPx() }
+                                         val viewportBottom = viewportTop + currentViewportHeight
+
+                                         if (absoluteCursorBottom > viewportBottom) {
+                                             scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                         } else if (absoluteCursorTop < viewportTop) {
+                                             scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                         }
+                                     } catch (e: Exception) {}
+                                 }
+                                 kotlinx.coroutines.delay(300)
+                                 commitChanges()
+                             }
+
+                               // Aggressive line-count enforcement - prevent text from exceeding page gap boundary
+                                LaunchedEffect(viewModel.activeTextValue.text, state.activeTextLayoutResult) {
+                                    if (state.activeTextLayoutResult != null && viewModel.activeTextInputPosition != null && state.pageHeightPx > 0f) {
+                                        try {
+                                            val layout = state.activeTextLayoutResult!!
+                                            val y = viewModel.activeTextInputPosition!!.y
+                                            val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                            val pageIndex = kotlin.math.floor(y / state.pageHeightPx).toInt()
+                                            val contentEnd = (pageIndex + 1) * state.pageHeightPx - gapPx
+                                            val maxHeightPx = kotlin.math.max(0f, contentEnd - y)
+
+                                            val textBottomY = y + layout.size.height
+
+                                            // If text height exceeds boundary, truncate to fit
+                                            if (layout.size.height > maxHeightPx && viewModel.activeTextValue.text.isNotEmpty()) {
+                                                // Calculate max lines that fit
+                                                val rowHeight = SNoteConfig.getRowHeight(state.currentTextSize)
+                                                val maxLines = kotlin.math.max(1, (maxHeightPx / rowHeight).toInt())
+
+                                                // If layout has more lines than can fit, truncate
+                                                if (layout.lineCount > maxLines) {
+                                                    val endOfLastFittingLine = layout.getLineEnd(maxLines - 1)
+                                                    val truncatedText = viewModel.activeTextValue.text.substring(0, endOfLastFittingLine)
+                                                    viewModel.activeTextValue = viewModel.activeTextValue.copy(text = truncatedText)
+                                                    commitActiveText()
                                                 }
                                             }
-                                        },
-                                        modifier = Modifier
-                                            .bringIntoViewRequester(bringIntoViewRequester)
-                                            .widthIn(max = maxTextWidth)
-                                            .focusRequester(focusRequester)
-                                            .background(Color.Transparent),
-                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                            autoCorrectEnabled = false
-                                        ),
-                                        textStyle = androidx.compose.ui.text.TextStyle(
-                                            color = chosenColor,
-                                            fontSize = with(LocalDensity.current) { state.currentTextSize.toSp() },
-                                            lineHeight = with(LocalDensity.current) { (SNoteConfig.getRowHeight(TEXT_LARGE)).toSp() },
-                                            lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
-                                                alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
-                                                trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
-                                            ),
-                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                                includeFontPadding = false
-                                            )
-                                        ),
-                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(strokeColor)
-                                    )
+                                        } catch (e: Exception) {}
+                                    }
                                 }
-                            }
 
-                            LaunchedEffect(viewModel.activeTextInputPosition, state.activeTextLayoutResult, availableHeight) {
-                                // Trigger scroll whenever position is initially clicked and layout is ready
-                                if (state.activeTextLayoutResult != null) {
-                                    kotlinx.coroutines.delay(50) // Brief delay to let IME padding settle
-                                    try {
-                                        val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, state.activeTextLayoutResult!!.layoutInput.text.text.length)
-                                        val cursorRect = state.activeTextLayoutResult!!.getCursorRect(cursorOffset)
-                                        val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
-                                        val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
-                                        val viewportTop = scrollState.value.toFloat()
-                                        val currentViewportHeight = with(density) { availableHeight.toPx() }
-                                        val viewportBottom = viewportTop + currentViewportHeight
+                               // Aggressive real-time cursor position constraint - prevent cursor from entering gap
+                               LaunchedEffect(viewModel.activeTextValue.selection, state.activeTextLayoutResult) {
+                                   if (state.activeTextLayoutResult != null && viewModel.activeTextInputPosition != null && state.pageHeightPx > 0f) {
+                                       try {
+                                           val layout = state.activeTextLayoutResult!!
+                                           val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, layout.layoutInput.text.text.length)
+                                           val cursorRect = layout.getCursorRect(cursorOffset)
+                                           val cursorBottomY = viewModel.activeTextInputPosition!!.y + cursorRect.bottom
+                                           val cursorLineIndex = layout.getLineForOffset(cursorOffset)
 
-                                        if (absoluteCursorBottom > viewportBottom) {
-                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
-                                        } else if (absoluteCursorTop < viewportTop) {
-                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
-                                        }
-                                    } catch (e: Exception) {}
-                                }
-                            }
+                                           // Calculate gap boundaries
+                                           val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                           val pageIndex = kotlin.math.floor(cursorBottomY / state.pageHeightPx).toInt()
+                                           val pageStart = pageIndex * state.pageHeightPx
+                                           val contentEnd = pageStart + state.pageHeightPx - gapPx
 
-                            LaunchedEffect(viewModel.activeTextValue.text, viewModel.activeTextValue.selection, availableHeight) {
-                                kotlinx.coroutines.delay(10)
-                                if (state.needsAutoCommitAfterPaste && state.activeTextLayoutResult != null) {
-                                    state.needsAutoCommitAfterPaste = false
-                                    commitActiveText()
-                                }
-                                state.activeTextLayoutResult?.let {
-                                    try {
-                                        val cursorOffset = viewModel.activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
-                                        val cursorRect = it.getCursorRect(cursorOffset)
-                                        val absoluteCursorTop = viewModel.activeTextInputPosition!!.y + cursorRect.top - 60f
-                                        val absoluteCursorBottom = viewModel.activeTextInputPosition!!.y + cursorRect.bottom + 140f
-                                        val viewportTop = scrollState.value.toFloat()
-                                        val currentViewportHeight = with(density) { availableHeight.toPx() }
-                                        val viewportBottom = viewportTop + currentViewportHeight
+                                           // If cursor would be in gap, move to last valid position
+                                           if (cursorBottomY > contentEnd) {
+                                               // Find the line at the content boundary
+                                               val maxValidY = contentEnd - viewModel.activeTextInputPosition!!.y
+                                               val maxValidLine = (maxValidY / SNoteConfig.getRowHeight(state.currentTextSize)).toInt()
+                                                   .coerceAtMost(layout.lineCount - 1)
+                                                   .coerceAtLeast(0)
 
-                                        if (absoluteCursorBottom > viewportBottom) {
-                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
-                                        } else if (absoluteCursorTop < viewportTop) {
-                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
-                                        }
-                                    } catch (e: Exception) {}
-                                }
-                                kotlinx.coroutines.delay(300)
-                                commitChanges()
-                            }
+                                               val safeOffset = if (maxValidLine >= 0 && maxValidLine < layout.lineCount) {
+                                                   layout.getLineEnd(maxValidLine).coerceAtMost(layout.layoutInput.text.text.length)
+                                               } else {
+                                                   layout.layoutInput.text.text.length
+                                               }
 
-                            LaunchedEffect(viewModel.activeTextInputPosition) {
-                                kotlinx.coroutines.delay(100)
-                                try {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            }
+                                               viewModel.activeTextValue = viewModel.activeTextValue.copy(
+                                                   selection = androidx.compose.ui.text.TextRange(safeOffset)
+                                               )
+                                           }
+                                       } catch (e: Exception) {
+                                           // Silently ignore errors
+                                       }
+                                   }
+                               }
+
+                               // Monitor text height and auto-commit if approaching gap
+                               LaunchedEffect(viewModel.activeTextValue.text) {
+                                   if (state.activeTextLayoutResult != null && state.pageHeightPx > 0f) {
+                                       kotlinx.coroutines.delay(50)
+                                       try {
+                                           val layout = state.activeTextLayoutResult!!
+                                           val bottomY = viewModel.activeTextInputPosition!!.y + layout.size.height
+
+                                           val gapPx = SNoteConfig.PAGE_GAP_DP * state.currentDensity
+                                           val pageIndex = kotlin.math.floor(bottomY / state.pageHeightPx).toInt()
+                                           val pageStart = pageIndex * state.pageHeightPx
+                                           val contentEnd = pageStart + state.pageHeightPx - gapPx
+                                           val rowHeight = SNoteConfig.getRowHeight(state.currentTextSize)
+
+                                           // If text bottom is approaching or crossing into gap, auto-commit
+                                           if (bottomY > contentEnd - rowHeight * 0.1f) {
+                                               if (viewModel.activeTextValue.text.isNotEmpty()) {
+                                                   commitActiveText()
+                                               }
+                                           }
+                                       } catch (e: Exception) {}
+                                   }
+                               }
                         }
 
                         // Overlay page numbers
