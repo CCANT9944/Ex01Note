@@ -1,4 +1,4 @@
-﻿package com.example.ex01
+package com.example.ex01
 import com.example.ex01.*
 import com.example.ex01.data.*
 import com.example.ex01.ui.screens.*
@@ -271,7 +271,7 @@ fun MainScreen(
                         )
                     }
                 } else {
-                    gridItems(folders, key = { it.id }) { folder ->
+                    gridItems(folders, key = { "folder_${it.id}" }) { folder ->
                         val isCollapsed by collapsedFoldersRepo.isCollapsedFlow(folder.id).collectAsStateWithLifecycle(initialValue = true)
                         val folderColorValue by folderColorRepo.colorFlow(folder.id).collectAsStateWithLifecycle(initialValue = null)
                         FolderCard(
@@ -305,7 +305,7 @@ fun MainScreen(
 
                     gridItems(
                         items = displayLists,
-                        key = { it.id },
+                        key = { "list_${it.id}" },
                         span = { GridItemSpan(2) }
                     ) { note ->
                         var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
@@ -364,7 +364,7 @@ fun MainScreen(
 
                     gridItems(
                         items = displayNotes,
-                        key = { it.id },
+                        key = { "note_${it.id}" },
                         span = { GridItemSpan(2) }
                     ) { note ->
                         var itemOffset by remember(note.id) { mutableStateOf(Offset.Zero) }
@@ -472,7 +472,7 @@ fun MainScreen(
                         noteToRename = note
                         noteToActions = null
                     },
-                    onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
+                    onChangeStyle = if (note.kind != NoteKinds.CHECKLIST) null else { {
                         noteToChangeStyle = note
                         noteToActions = null
                     } },

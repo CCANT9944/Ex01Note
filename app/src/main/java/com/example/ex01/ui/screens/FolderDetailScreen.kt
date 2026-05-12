@@ -1,4 +1,4 @@
-﻿package com.example.ex01
+package com.example.ex01
 import com.example.ex01.*
 import com.example.ex01.data.*
 import com.example.ex01.ui.screens.*
@@ -301,7 +301,7 @@ fun FolderDetailScreen(
                     noteToRename = note
                     noteToActions = null
                 },
-                onChangeStyle = if (note.kind == NoteKinds.FREE_TEXT) null else { {
+                onChangeStyle = if (note.kind != NoteKinds.CHECKLIST) null else { {
                     noteToChangeStyle = note
                     noteToActions = null
                 } },

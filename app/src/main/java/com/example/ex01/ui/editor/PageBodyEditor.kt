@@ -57,6 +57,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -319,7 +320,11 @@ private fun RichTextBodyEditor(
                 onTextLayout = { result ->
                     textLayoutResult.value = result
                 },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 20.sp,
+                    lineHeight = 28.sp
+                ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
                 decorationBox = { innerTextField ->
@@ -327,7 +332,10 @@ private fun RichTextBodyEditor(
                         if (value.text.isBlank()) {
                             Text(
                                 text = "...",
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 20.sp,
+                                    lineHeight = 28.sp
+                                ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                         }

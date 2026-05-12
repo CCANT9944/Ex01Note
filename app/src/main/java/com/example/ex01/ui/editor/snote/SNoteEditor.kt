@@ -74,7 +74,7 @@ fun SNoteEditor(
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
-    var currentTextSize by remember { mutableFloatStateOf(prefs.getFloat("text_size", TEXT_LARGE)) }
+    var currentTextSize by remember { mutableFloatStateOf(TEXT_LARGE) }
     val focusRequester = remember { FocusRequester() }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var currentHighlighterThickness by remember { mutableFloatStateOf(prefs.getFloat("highlighter_thickness", HIGHLIGHTER_MEDIUM)) }
@@ -94,8 +94,8 @@ fun SNoteEditor(
     }
 
     fun updateTextSize(t: Float) {
-        currentTextSize = t
-        prefs.edit { putFloat("text_size", t) }
+        currentTextSize = TEXT_LARGE
+        prefs.edit { putFloat("text_size", TEXT_LARGE) }
     }
 
     fun updateHighlighterThickness(t: Float) {
@@ -114,10 +114,115 @@ fun SNoteEditor(
     var currentDensity = 1f
     var activeTextLayoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val staticTextLayouts = remember { mutableMapOf<DrawingLine, androidx.compose.ui.text.TextLayoutResult>() }
+    var activeTextOriginalHeight by remember { mutableFloatStateOf(0f) }
+    val activeFragments = remember { mutableStateListOf<DrawingLine>() }
+
+    fun mergeAdjacentTextBlocks() {
+        if (drawingLines.isEmpty() || pageHeightPx <= 0f) return
+        val textLines = drawingLines.filter { it.text != null && it.points.isNotEmpty() }
+        if (textLines.size < 2) return
+        
+        val sorted = textLines.sortedBy { it.points.first().y }
+        val toRemove = mutableSetOf<DrawingLine>()
+        val replacements = mutableMapOf<DrawingLine, DrawingLine>()
+        
+        var i = 0
+        while (i < sorted.size) {
+            var current = sorted[i]
+            var j = i + 1
+            while (j < sorted.size) {
+                val next = sorted[j]
+                
+                val currentBottom = current.points.first().y + (staticTextLayouts[current]?.size?.height?.toFloat() ?: SNoteConfig.getRowHeight(current.strokeWidth))
+                val nextTop = next.points.first().y
+                
+                val sameX = kotlin.math.abs(current.points.first().x - next.points.first().x) < 2f
+                val sameSize = kotlin.math.abs(current.strokeWidth - next.strokeWidth) < 0.1f
+                val sameColor = current.color == next.color
+                val samePage = kotlin.math.floor(currentBottom / pageHeightPx) == kotlin.math.floor(nextTop / pageHeightPx)
+                val adjacent = kotlin.math.abs(nextTop - currentBottom) < 5f
+                
+                if (sameX && sameSize && sameColor && samePage && adjacent) {
+                    current = current.copy(text = current.text + "\n" + next.text)
+                    toRemove.add(next)
+                    j++
+                } else {
+                    break
+                }
+            }
+            if (j > i + 1) {
+                replacements[sorted[i]] = current
+            }
+            i = j
+        }
+        
+        if (toRemove.isNotEmpty() || replacements.isNotEmpty()) {
+            val newList = drawingLines.mapNotNull { line ->
+                if (toRemove.contains(line)) null
+                else replacements[line] ?: line
+            }
+            drawingLines.clear()
+            drawingLines.addAll(newList)
+        }
+    }
+
+    fun pushContentBelow(startY: Float, deltaY: Float, excludeLines: Set<DrawingLine> = emptySet(), baseline: List<DrawingLine>? = null): List<DrawingLine> {
+        val source = baseline ?: drawingLines.toList()
+        if (deltaY < 1f || pageHeightPx <= 0f) return source
+        
+        val updatedLines = source.map { line ->
+            if (excludeLines.contains(line)) return@map line
+            if (line.text == null) return@map line // Only push text blocks, leave drawings absolutely positioned
+            val firstPt = line.points.firstOrNull() ?: return@map line
+            
+            if (firstPt.y >= startY - 2f) { // More resilient margin
+                var baseNewY = firstPt.y + deltaY
+                var blockHeight = 0f
+                if (line.text != null) {
+                    val linesCount = line.text.split('\n').size
+                    blockHeight = staticTextLayouts[line]?.size?.height?.toFloat() ?: (SNoteConfig.getRowHeight(TEXT_LARGE) * linesCount)
+                } else {
+                    if (line.points.isNotEmpty()) {
+                        val minY = line.points.minOf { it.y }
+                        val maxY = line.points.maxOf { it.y }
+                        blockHeight = maxY - minY
+                    }
+                }
+                
+                val gapPx = SNoteConfig.PAGE_GAP_DP * currentDensity
+                val startPage = kotlin.math.floor(baseNewY / pageHeightPx).toInt()
+                val pageBottom = (startPage + 1) * pageHeightPx - gapPx
+                
+                // If the block's bottom goes into or past the gap, push it to the next page
+                if (baseNewY + blockHeight > pageBottom) {
+                    baseNewY = (startPage + 1) * pageHeightPx + (SNoteConfig.PAGE_TOP_MARGIN_DP * currentDensity)
+                    
+                    if (line.text != null) {
+                        val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
+                        baseNewY = SNoteConfig.snapYToRow(baseNewY, pageHeightPx, rowHeight, currentDensity)
+                    }
+                }
+                
+                val actualDeltaY = baseNewY - firstPt.y
+                val shiftedPoints = line.points.map { pt -> pt.copy(y = pt.y + actualDeltaY) }
+                line.copy(points = shiftedPoints)
+            } else {
+                line
+            }
+        }
+        
+        if (baseline == null) {
+            drawingLines.clear()
+            drawingLines.addAll(updatedLines)
+        }
+        return updatedLines
+    }
+
     var needsAutoCommitAfterPaste by remember { mutableStateOf(false) }
     var showLassoMenu by remember { mutableStateOf(false) }
     var showLassoColorPicker by remember { mutableStateOf(false) }
     var lassoMenuPosition by remember { mutableStateOf(Offset.Zero) }
+    var isAutoJumping by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -236,6 +341,8 @@ fun SNoteEditor(
                     strokeWidth = l.strokeWidth * selectionScale
                 )
             }
+
+
             drawingLines.addAll(finalizedLines)
             selectedLines.clear()
             selectionDragOffset = Offset.Zero
@@ -251,21 +358,33 @@ fun SNoteEditor(
         }
     }
 
-    fun commitActiveText(autoJump: Boolean = false) {
+    fun commitActiveText(autoJump: Boolean = false, forcedLayout: androidx.compose.ui.text.TextLayoutResult? = null) {
         commitLassoSelection()
         if (activeTextInputPosition != null) {
-            val savedState = viewModel.preEditTextState ?: drawingLines.toList()
+            var currentBlockStartIdx = 0
+            
+            // 1. CAPTURE STABLE BASELINE ONCE PER SESSION
+            if (viewModel.preEditTextState == null) {
+                viewModel.preEditTextState = drawingLines.toList()
+                viewModel.layoutBaselineState = drawingLines.toList()
+            }
+            val undoBaseline = viewModel.preEditTextState!!
+            val layoutBaseline = viewModel.layoutBaselineState!!
+            
             val textChanged = (originalHitLine == null && activeTextValue.text.isNotBlank()) ||
                               (originalHitLine != null && activeTextValue.text != originalHitLine!!.text)
 
             if (textChanged) {
-                viewModel.pushUndoState(savedState)
+                // Use the CLEAN baseline for undo
+                viewModel.pushUndoState(undoBaseline)
             }
 
             var lastBlockY = activeTextInputPosition!!.y
             var lastBlockText = ""
 
             if (!textChanged && originalHitLine != null) {
+                drawingLines.clear()
+                drawingLines.addAll(undoBaseline)
                 val index = if (originalHitIndex in 0..drawingLines.size) originalHitIndex else drawingLines.size
                 drawingLines.add(index, originalHitLine!!)
             } else if (activeTextValue.text.isNotBlank()) {
@@ -276,79 +395,171 @@ fun SNoteEditor(
                 val startY = activeTextInputPosition!!.y
                 val fullText = activeTextValue.text
 
-                if (activeTextLayoutResult != null && pageHeightPx > 0f) {
-                    val layRes = activeTextLayoutResult!!
-                    var currentBlockStartIdx = 0
+                val rowHeight = SNoteConfig.getRowHeight(currentTextSize)
+                val maxPageContentHeight = pageHeightPx - (SNoteConfig.PAGE_GAP_DP + SNoteConfig.PAGE_TOP_MARGIN_DP) * currentDensity
+
+                val layRes = forcedLayout ?: activeTextLayoutResult
+                if (layRes != null && pageHeightPx > 0f) {
+                    data class TextChunk(val text: String, val y: Float, val startIdx: Int, val endIdx: Int)
+                    val chunks = mutableListOf<TextChunk>()
+                    
                     var currentBlockY = startY
                     var cumulativeGapOffset = 0f
 
                     for (i in 0 until layRes.lineCount) {
-                        val virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
-                        val virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
-                        val currentLinePage = kotlin.math.floor(virtualTop / pageHeightPx).toInt()
+                        var virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
+                        var virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
+                        var currentLinePage = kotlin.math.floor(virtualTop / pageHeightPx).toInt()
                         val gapPx = SNoteConfig.PAGE_GAP_DP * currentDensity
-                        val pageBottom = (currentLinePage + 1) * pageHeightPx - gapPx
-                        val rowHeight = SNoteConfig.getRowHeight(currentTextSize)
+                        var pageBottom = (currentLinePage + 1) * pageHeightPx - gapPx
 
-                        val crossesBoundary = virtualBottom > pageBottom
-                        
-                        if (crossesBoundary) {
-                            if (i > 0) {
-                                val endIdx = layRes.getLineEnd(i - 1)
-                                if (endIdx > currentBlockStartIdx) {
-                                    drawingLines.add(
-                                        DrawingLine(
-                                            points = listOf(Offset(startX, currentBlockY)),
-                                            color = chosenColor,
-                                            strokeWidth = currentTextSize,
-                                            text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r')
+                        if (virtualBottom > pageBottom) {
+                            // Find the end of the current PARAGRAPH (next newline)
+                            val nextNewline = fullText.indexOf('\n', currentBlockStartIdx).let { if (it == -1) fullText.length else it }
+                            val paragraphEndLine = layRes.getLineForOffset(nextNewline)
+                            
+                            val paragraphRemainingHeight = layRes.getLineBottom(paragraphEndLine) - layRes.getLineTop(i)
+                            
+                            // If the rest of this paragraph fits on the next page, shift it
+                            val fitsOnNextPage = paragraphRemainingHeight <= (maxPageContentHeight + 10f * currentDensity)
+                            
+                            if (fitsOnNextPage) {
+                                // ATOMIC SHIFT for the rest of the current paragraph
+                                val nxtPage = currentLinePage + 1
+                                val newBlockY = nxtPage * pageHeightPx + (SNoteConfig.PAGE_TOP_MARGIN_DP * currentDensity)
+                                
+                                // fracture at line i-1 if we are shifting
+                                if (i > 0) {
+                                    val endIdx = layRes.getLineEnd(i - 1)
+                                    if (endIdx > currentBlockStartIdx) {
+                                        chunks.add(
+                                            TextChunk(
+                                                text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r'),
+                                                y = currentBlockY,
+                                                startIdx = currentBlockStartIdx,
+                                                endIdx = endIdx
+                                            )
                                         )
-                                    )
+                                    }
                                 }
+                                
                                 currentBlockStartIdx = layRes.getLineStart(i)
+                                currentBlockY = newBlockY
+                                
+                                // Adjust offsets for the rest of the lines
+                                val shiftDelta = newBlockY - (startY + layRes.getLineTop(i) + cumulativeGapOffset)
+                                cumulativeGapOffset += shiftDelta
+                                
+                                // Re-evaluate current line i
+                                virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
+                                virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
+                                currentLinePage = kotlin.math.floor(virtualTop / pageHeightPx).toInt()
+                                pageBottom = (currentLinePage + 1) * pageHeightPx - gapPx
+                            } else {
+                                // FRACTURE: Split at line i
+                                if (i > 0) {
+                                    val endIdx = layRes.getLineEnd(i - 1)
+                                    if (endIdx > currentBlockStartIdx) {
+                                        chunks.add(
+                                            TextChunk(
+                                                text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r'),
+                                                y = currentBlockY,
+                                                startIdx = currentBlockStartIdx,
+                                                endIdx = endIdx
+                                            )
+                                        )
+                                    }
+                                    currentBlockStartIdx = layRes.getLineStart(i)
+                                }
+                                
+                                val nxtPage = currentLinePage + 1
+                                val newBlockY = nxtPage * pageHeightPx + (SNoteConfig.PAGE_TOP_MARGIN_DP * currentDensity)
+                                
+                                cumulativeGapOffset += (newBlockY - virtualTop)
+                                currentBlockY = newBlockY
                             }
-                            
-                            val nxtPage = currentLinePage + 1
-                            val rowHeight = SNoteConfig.getRowHeight(currentTextSize)
-                            val newBlockY = nxtPage * pageHeightPx + (SNoteConfig.PAGE_TOP_MARGIN_DP * currentDensity)
-                            
-                            cumulativeGapOffset += (newBlockY - virtualTop)
-                            currentBlockY = newBlockY
                         }
                     }
 
-                    // --- FORCE AUTO JUMP ---
-                    if (autoJump) {
-                        // When autoJump is true, we ensure the final block is at least on the NEXT page relative to where it started.
-                        val startPage = kotlin.math.floor(startY / pageHeightPx).toInt()
-                        val currentBlockPage = kotlin.math.floor(currentBlockY / pageHeightPx).toInt()
-                        
-                        // If it hasn't naturally paginated to the next page yet, force it.
-                        if (currentBlockPage <= startPage) {
-                            val nxtPage = startPage + 1
-                            val forcedY = nxtPage * pageHeightPx + (SNoteConfig.PAGE_TOP_MARGIN_DP * currentDensity)
-                            lastBlockY = forcedY
-                        } else {
-                            lastBlockY = currentBlockY
-                        }
-
-                        lastBlockText = if (currentBlockStartIdx < fullText.length) fullText.substring(currentBlockStartIdx) else ""
-                    } else if (currentBlockStartIdx < fullText.length) {
-                        drawingLines.add(
-                            DrawingLine(
-                                points = listOf(Offset(startX, currentBlockY)),
-                                color = chosenColor,
-                                strokeWidth = currentTextSize,
-                                text = fullText.substring(currentBlockStartIdx)
+                    if (currentBlockStartIdx < fullText.length) {
+                        chunks.add(
+                            TextChunk(
+                                text = fullText.substring(currentBlockStartIdx),
+                                y = currentBlockY,
+                                startIdx = currentBlockStartIdx,
+                                endIdx = fullText.length
                             )
                         )
                     }
-                    // -----------------------
+
+                    // 2. CALCULATE PUSH RELATIVE TO STABLE BASELINE
+                    val finalBlockHeight = layRes.size.height.toFloat()
+                    val newBottomY = startY + finalBlockHeight
+                    
+                    val sessionTopY = activeTextInputPosition!!.y
+                    val originalBottomY = sessionTopY + activeTextOriginalHeight
+                    
+                    val deltaY = newBottomY - originalBottomY
+                    
+                    // 3. APPLY PUSH TO BASELINE (Non-cumulative)
+                    val pushedBaseline = if (deltaY > 1f) {
+                        pushContentBelow(originalBottomY, deltaY, baseline = layoutBaseline)
+                    } else {
+                        layoutBaseline
+                    }
+                    
+                    // 4. UPDATE DRAWING LINES
+                    drawingLines.clear()
+                    drawingLines.addAll(pushedBaseline)
+                    
+                    // 5. SESSION RESTART / COMMIT LOGIC
+                    if (!autoJump) {
+                        // FINAL COMMIT: Merge all chunks
+                        val allLines = chunks.map { 
+                            DrawingLine(listOf(Offset(startX, it.y)), chosenColor, currentTextSize, text = it.text.trimEnd('\n', '\r')) 
+                        }
+                        drawingLines.addAll(allLines)
+                        
+                        viewModel.preEditTextState = null
+                        viewModel.layoutBaselineState = null
+                        originalHitLine = null
+                        originalHitIndex = -1
+                        activeTextInputPosition = null
+                        activeTextValue = TextFieldValue("")
+                    } else {
+                        // MID-EDIT PAGE JUMP: Restart session on the chunk containing the cursor
+                        val originalSelection = activeTextValue.selection.end
+                        val cursorChunk = chunks.find { originalSelection >= it.startIdx && originalSelection < it.endIdx } ?: chunks.last()
+                        
+                        // Commit all OTHER chunks to drawingLines
+                        val linesToCommit = chunks.filter { it !== cursorChunk }.map { 
+                            DrawingLine(listOf(Offset(startX, it.y)), chosenColor, currentTextSize, text = it.text) 
+                        }
+                        drawingLines.addAll(linesToCommit)
+                        
+                        // Update baseline so future typing in cursorChunk pushes the newly committed chunks
+                        viewModel.layoutBaselineState = drawingLines.toList()
+                        
+                        // Restart editor on cursorChunk
+                        isAutoJumping = true
+                        activeTextInputPosition = Offset(startX, cursorChunk.y)
+                        val relSelection = (originalSelection - cursorChunk.startIdx).coerceIn(0, cursorChunk.text.length)
+                        activeTextValue = TextFieldValue(cursorChunk.text, selection = androidx.compose.ui.text.TextRange(relSelection))
+                        
+                        // Recalculate activeTextOriginalHeight for the restarted session
+                        val startLine = layRes.getLineForOffset(cursorChunk.startIdx)
+                        val endLine = layRes.getLineForOffset((cursorChunk.endIdx - 1).coerceAtLeast(0))
+                        activeTextOriginalHeight = layRes.getLineBottom(endLine) - layRes.getLineTop(startLine)
+                    }
+                    activeFragments.clear()
                 } else {
                     // Fallback block mapping if no precise text layout
                     if (autoJump) {
                         lastBlockY = startY
                         lastBlockText = fullText
+                        val pushedBaseline = pushContentBelow(startY, rowHeight, baseline = layoutBaseline)
+                        drawingLines.clear()
+                        drawingLines.addAll(pushedBaseline)
                     } else {
                         drawingLines.add(
                             DrawingLine(
@@ -363,17 +574,26 @@ fun SNoteEditor(
                 // ------------------------------------
             }
 
+
             if (!autoJump) {
-                viewModel.preEditTextState = null
-                originalHitLine = null
-                originalHitIndex = -1
-                activeTextInputPosition = null
-                activeTextValue = TextFieldValue("")
-            } else {
-                // Ensure activeTextInputPosition is updated to the next page location
+                // If fallback block mapped
+                if ((forcedLayout ?: activeTextLayoutResult) == null) {
+                    viewModel.preEditTextState = null
+                    viewModel.layoutBaselineState = null
+                    originalHitLine = null
+                    originalHitIndex = -1
+                    activeTextInputPosition = null
+                    activeTextValue = TextFieldValue("")
+                }
+            } else if ((forcedLayout ?: activeTextLayoutResult) == null) {
+                // MID-EDIT Fallback
+                isAutoJumping = true
                 activeTextInputPosition = Offset(activeTextInputPosition!!.x, lastBlockY)
-                activeTextValue = TextFieldValue(lastBlockText, selection = androidx.compose.ui.text.TextRange(lastBlockText.length))
+                val originalSelection = activeTextValue.selection.end
+                val relSelection = (originalSelection - currentBlockStartIdx).coerceIn(0, lastBlockText.length)
+                activeTextValue = TextFieldValue(lastBlockText, selection = androidx.compose.ui.text.TextRange(relSelection))
             }
+            mergeAdjacentTextBlocks()
             commitChanges()
         }
     }
@@ -467,13 +687,14 @@ fun SNoteEditor(
                     ) {
                         if (pageHeightDp > 0.dp) {
                         // Background & Dividers Layer
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(pageHeightDp * pageCount)
-                        ) {
-                            drawRect(color = androidx.compose.ui.graphics.Color(0xFFE5E5E5), size = size)
+                            val gapColor = MaterialTheme.colorScheme.surfaceVariant
                             val pageGap = SNoteConfig.PAGE_GAP_DP * currentDensity
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(pageHeightDp * pageCount)
+                            ) {
+                                drawRect(color = gapColor, size = size)
                             for (i in 0 until pageCount) {
                                 val yStart = i * pageHeightPx
                                 val rectHeight = pageHeightPx - pageGap
@@ -646,7 +867,7 @@ fun SNoteEditor(
 
                                                     commitActiveText(false)
 
-                                                    val rowHeight = SNoteConfig.getRowHeight(currentTextSize)
+                                                    val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
 
                                                     // Prevent placement in gaps and top margins
                                                     if (pageHeightPx > 0f) {
@@ -691,7 +912,7 @@ fun SNoteEditor(
                                                                         visualRows += 1
                                                                     }
                                                                 }
-                                                                val endRow = startRow + visualRows
+                                                                val endRow = startRow + kotlin.math.max(0, visualRows - 1)
 
                                                                 if (clickedRowIndex in startRow..endRow) {
                                                                     hitIndex = i
@@ -703,27 +924,78 @@ fun SNoteEditor(
 
                                                     if (hitIndex != -1) {
                                                         viewModel.preEditTextState = drawingLines.toList() + selectedLines.toList()
-                                                        val hitLine = drawingLines.removeAt(hitIndex)
-                                                        originalHitLine = hitLine
-                                                        originalHitIndex = hitIndex
-                                                        updatePenColor(hitLine.color.value.toLong())
-                                                        activeTextInputPosition = hitLine.points.first()
-                                                        val safeText = hitLine.text!! // Keep original newlines
-
-                                                        val layRes = staticTextLayouts[hitLine]
-                                                        var finalCharIdx = safeText.length
-                                                        if (layRes != null) {
-                                                            val localOffset = tapPos - hitLine.points.first()
-                                                            finalCharIdx = layRes.getOffsetForPosition(localOffset)
+                                                        val hitLineOrig = drawingLines.removeAt(hitIndex)
+                                                        
+                                                        // Gather adjacent text blocks
+                                                        val mergedGroup = mutableListOf<DrawingLine>()
+                                                        mergedGroup.add(hitLineOrig)
+                                                        
+                                                        var changed = true
+                                                        while (changed) {
+                                                            changed = false
+                                                            val neighborIdx = drawingLines.indexOfFirst { l ->
+                                                                l.text != null && l.points.isNotEmpty() &&
+                                                                l.strokeWidth == hitLineOrig.strokeWidth &&
+                                                                kotlin.math.abs(l.points.first().x - hitLineOrig.points.first().x) < 2f &&
+                                                                mergedGroup.any { m ->
+                                                                    val mTop = m.points.first().y
+                                                                    val mBottom = mTop + (staticTextLayouts[m]?.size?.height?.toFloat() ?: SNoteConfig.getRowHeight(m.strokeWidth))
+                                                                    val lTop = l.points.first().y
+                                                                    val lBottom = lTop + (staticTextLayouts[l]?.size?.height?.toFloat() ?: SNoteConfig.getRowHeight(l.strokeWidth))
+                                                                    
+                                                                    // Allow merging chunks that were split by page boundaries (gap is ~110px)
+                                                                    val dist = kotlin.math.abs(lTop - mBottom)
+                                                                    val distReverse = kotlin.math.abs(mTop - lBottom)
+                                                                    
+                                                                    dist < 150f || distReverse < 150f
+                                                                }
+                                                            }
+                                                            if (neighborIdx != -1) {
+                                                                mergedGroup.add(drawingLines.removeAt(neighborIdx))
+                                                                changed = true
+                                                            }
                                                         }
+                                                        
+                                                        mergedGroup.sortBy { it.points.first().y }
+                                                        val combinedText = mergedGroup.joinToString("") { it.text!! }
+                                                        val topPos = mergedGroup.first().points.first()
+                                                        
+                                                        // Calculate character offset in combined text
+                                                        var offsetInCombined = 0
+                                                        val hitLineIdxInGroup = mergedGroup.indexOf(hitLineOrig)
+                                                        for (idx in 0 until hitLineIdxInGroup) {
+                                                            offsetInCombined += mergedGroup[idx].text!!.length
+                                                        }
+                                                        
+                                                        val layRes = staticTextLayouts[hitLineOrig]
+                                                        if (layRes != null) {
+                                                            val localOffset = tapPos - hitLineOrig.points.first()
+                                                            offsetInCombined += layRes.getOffsetForPosition(localOffset)
+                                                        } else {
+                                                            offsetInCombined += hitLineOrig.text!!.length
+                                                        }
+                                                        originalHitLine = DrawingLine(listOf(topPos), hitLineOrig.color, hitLineOrig.strokeWidth, text = combinedText)
+                                                        originalHitIndex = hitIndex
+                                                        
+                                                         // CAPTURE ACTUAL BOTTOM OF GROUP (including gaps)
+                                                         val lastLine = mergedGroup.last()
+                                                         val lastLineBottom = lastLine.points.first().y + (staticTextLayouts[lastLine]?.size?.height?.toFloat() ?: SNoteConfig.getRowHeight(lastLine.strokeWidth))
+                                                         activeTextOriginalHeight = lastLineBottom - mergedGroup.first().points.first().y
 
-                                                        activeTextValue = TextFieldValue(safeText, selection = androidx.compose.ui.text.TextRange(finalCharIdx))
-                                                        currentTextSize = hitLine.strokeWidth
+                                                        updatePenColor(hitLineOrig.color.value.toLong())
+                                                        val modifiedLines = drawingLines.toMutableList()
+                                                        modifiedLines.removeAll(mergedGroup)
+                                                        viewModel.layoutBaselineState = modifiedLines.toList()
+                                                        
+                                                        activeTextInputPosition = topPos
+                                                        activeTextValue = TextFieldValue(combinedText, selection = androidx.compose.ui.text.TextRange(offsetInCombined))
+                                                        currentTextSize = TEXT_LARGE
                                                         commitChanges()
                                                     } else {
                                                         val defaultIndent = with(density) { 16.dp.toPx() }
                                                         activeTextInputPosition = Offset(defaultIndent, targetY)
                                                         activeTextValue = TextFieldValue("")
+                                                        activeTextOriginalHeight = rowHeight
                                                         commitChanges()
                                                     }
                                                 } else if (isLassoMode) {
@@ -829,6 +1101,12 @@ fun SNoteEditor(
                                                                 continue
                                                             }
 
+                                                            // Prevent lasso from selecting text items
+                                                            if (l.text != null) {
+                                                                remainingLines.add(l)
+                                                                continue
+                                                            }
+
                                                             // Fast precise geometry intersection that mathematically ignores ANY points visually "covered" by subsequent erasers
                                                             val isSelected = if (l.text != null && l.points.isNotEmpty()) {
                                                                 val startPt = l.points.first()
@@ -897,7 +1175,7 @@ fun SNoteEditor(
                                 }
                         ) {
                             // Draw saved lines
-                            drawingLines.forEach { line ->
+                            (drawingLines + activeFragments).forEach { line ->
                                 if (line.text != null && line.points.isNotEmpty()) {
                                     return@forEach // Rendered natively via Jetpack Compose Text overlay instead of raw Canvas
                                 }
@@ -1050,7 +1328,7 @@ fun SNoteEditor(
                         }
 
                         // Render Static Text natively via Compose to fix multi-line metrics and Android's Canvas jump disparities
-                        drawingLines.forEach { line ->
+                        (drawingLines + activeFragments).forEach { line ->
                             if (line.text != null && line.points.isNotEmpty()) {
                                 val activeLineColor = if (line.color == Color.Unspecified || line.color == Color.Black || line.color == Color.White) strokeColor else line.color
                                 val xPosDp = with(LocalDensity.current) { line.points.first().x.toDp() }
@@ -1246,20 +1524,18 @@ fun SNoteEditor(
                                     }
 
                                     // Calculate maximum rows allowed from current position to page bottom
-                                    val rowHeight = SNoteConfig.getRowHeight(currentTextSize)
+                                    val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
                                     // REFINED: Subtract a tiny amount (0.5dp) to ensure no pixel bleed into gap
                                     val rawSpacePx = kotlin.math.max(0f, pageBottom - activeTextInputPosition!!.y - (0.5f * currentDensity))
                                     
                                     // REFINED FIX: Quantize height to exact row multiples to eliminate "ghost rows"
                                     val maxRowsPossible = kotlin.math.floor(rawSpacePx / rowHeight).toInt()
                                     val quantizedHeightPx = maxRowsPossible * rowHeight
-                                    val maxAllowedHeightDp = with(LocalDensity.current) { quantizedHeightPx.toDp() }
+                                    val maxAllowedHeightDp = with(LocalDensity.current) { quantizedHeightPx.coerceAtLeast(rowHeight).toDp() }
 
                                     Box(
                                         modifier = Modifier
                                             .widthIn(max = maxTextWidth)
-                                            .height(maxAllowedHeightDp)
-                                            .clip(RectangleShape)
                                     ) {
                                         BasicTextField(
                                             value = activeTextValue,
@@ -1271,31 +1547,61 @@ fun SNoteEditor(
                                                 // Update immediately so layout can re-run and detect overflow naturally
                                                 activeTextValue = newValue
                                             },
-                                            onTextLayout = { textLayoutResult ->
-                                                activeTextLayoutResult = textLayoutResult
-                                                val startY = activeTextInputPosition?.y ?: 0f
-                                                
-                                                // Detect page overflow and trigger seamless jump
-                                                if (pageHeightPx > 0f) {
-                                                    val gapPx2 = SNoteConfig.PAGE_GAP_DP * currentDensity
-                                                    val pageIdx2 = kotlin.math.floor(startY / pageHeightPx).toInt()
-                                                    val pageBottom2 = (pageIdx2 + 1) * pageHeightPx - gapPx2
-                                                    val rowHeight2 = SNoteConfig.getRowHeight(currentTextSize)
-                                                    
-                                                    // REFINED JUMP: Trigger jump as soon as the text bottom crosses the quantized boundary
-                                                    val maxAllowedLines = kotlin.math.floor((pageBottom2 - startY - (0.5f * currentDensity)) / rowHeight2).toInt()
-                                                    
-                                                    if (textLayoutResult.lineCount > maxAllowedLines && activeTextValue.text.isNotEmpty()) {
-                                                        commitActiveText(autoJump = true)
-                                                    }
+                                             onTextLayout = { layoutResult ->
+                                                 activeTextLayoutResult = layoutResult
+                                                 
+                                                 if (isAutoJumping) {
+                                                     isAutoJumping = false
+                                                 } else {
+                                                     if (activeTextInputPosition != null && pageHeightPx > 0f) {
+                                                         // DYNAMIC REFLOW: Shift background lines smoothly as you type
+                                                         var currentHeight = layoutResult.size.height.toFloat()
+                                                         
+                                                         // Fix Phantom Wrap: if the last line is empty (caused by cursor at boundary) without a literal newline
+                                                         if (layoutResult.lineCount > 1 && 
+                                                             layoutResult.getLineStart(layoutResult.lineCount - 1) == activeTextValue.text.length && 
+                                                             !activeTextValue.text.endsWith('\n')) {
+                                                             currentHeight -= (layoutResult.getLineBottom(layoutResult.lineCount - 1) - layoutResult.getLineTop(layoutResult.lineCount - 1))
+                                                         }
+                                                         
+                                                         if (kotlin.math.abs(currentHeight - activeTextOriginalHeight) > 1f) {
+                                                             val deltaY = currentHeight - activeTextOriginalHeight
+                                                             val originalBottomY = activeTextInputPosition!!.y + activeTextOriginalHeight
+                                                             
+                                                             val currentBaseline = viewModel.layoutBaselineState ?: drawingLines.toList()
+                                                             val pushedBaseline = pushContentBelow(originalBottomY, deltaY, baseline = currentBaseline)
+                                                             
+                                                             drawingLines.clear()
+                                                             drawingLines.addAll(pushedBaseline)
+                                                             
+                                                             viewModel.layoutBaselineState = pushedBaseline
+                                                             activeTextOriginalHeight = currentHeight
+                                                         }
+                                                         
+                                                         if (needsAutoCommitAfterPaste) {
+                                                             needsAutoCommitAfterPaste = false
+                                                             commitActiveText(false, forcedLayout = layoutResult)
+                                                         } else {
 
-                                                    val bottomY = startY + textLayoutResult.size.height
-                                                    val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
-                                                    if (neededPages > pageCount) {
-                                                        pageCount = neededPages
-                                                    }
-                                                }
-                                            },
+
+                                                     
+                                                     val rh = SNoteConfig.getRowHeight(TEXT_LARGE)
+                                                     val lineCount = layoutResult.lineCount
+                                                     val availableHeight = pageHeightPx - ((activeTextInputPosition!!.y % pageHeightPx) + (SNoteConfig.PAGE_GAP_DP * currentDensity))
+                                                     val maxAllowedLines = (availableHeight / rh).toInt().coerceAtLeast(1)
+                                                     
+                                                     if (lineCount > maxAllowedLines) {
+                                                         commitActiveText(autoJump = true, forcedLayout = layoutResult)
+                                                     }
+                                                     
+                                                     // Update page count if needed
+                                                     val bottomY = activeTextInputPosition!!.y + layoutResult.size.height
+                                                     val neededPages = kotlin.math.ceil((bottomY / pageHeightPx).toDouble()).toInt()
+                                                     if (neededPages > pageCount) pageCount = neededPages
+                                                 }
+                                                 }
+                                                 }
+                                             },
                                             modifier = Modifier
                                                 .bringIntoViewRequester(bringIntoViewRequester)
                                                 .fillMaxWidth()
@@ -1307,7 +1613,7 @@ fun SNoteEditor(
                                             textStyle = androidx.compose.ui.text.TextStyle(
                                                 color = chosenColor,
                                                 fontSize = with(LocalDensity.current) { currentTextSize.toSp() },
-                                                lineHeight = with(LocalDensity.current) { SNoteConfig.getRowHeight(currentTextSize).toSp() },
+                                                lineHeight = with(LocalDensity.current) { SNoteConfig.getRowHeight(TEXT_LARGE).toSp() },
                                                 lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
                                                     alignment = androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
                                                     trim = androidx.compose.ui.text.style.LineHeightStyle.Trim.None
@@ -1336,9 +1642,21 @@ fun SNoteEditor(
                                         val viewportBottom = viewportTop + currentViewportHeight
 
                                         if (absoluteCursorBottom > viewportBottom) {
-                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                            val target = (absoluteCursorBottom - currentViewportHeight).toInt()
+                                            if (isAutoJumping) {
+                                                scrollState.scrollTo(target)
+                                                isAutoJumping = false
+                                            } else {
+                                                scrollState.animateScrollTo(target)
+                                            }
                                         } else if (absoluteCursorTop < viewportTop) {
-                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                            val target = absoluteCursorTop.toInt()
+                                            if (isAutoJumping) {
+                                                scrollState.scrollTo(target)
+                                                isAutoJumping = false
+                                            } else {
+                                                scrollState.animateScrollTo(target)
+                                            }
                                         }
                                     } catch (e: Exception) {}
                                 }
@@ -1346,10 +1664,6 @@ fun SNoteEditor(
 
                             LaunchedEffect(activeTextValue.text, activeTextValue.selection, availableHeight) {
                                 kotlinx.coroutines.delay(10)
-                                if (needsAutoCommitAfterPaste && activeTextLayoutResult != null) {
-                                    needsAutoCommitAfterPaste = false
-                                    commitActiveText(false)
-                                }
                                 activeTextLayoutResult?.let {
                                     try {
                                         val cursorOffset = activeTextValue.selection.end.coerceIn(0, it.layoutInput.text.text.length)
@@ -1361,9 +1675,21 @@ fun SNoteEditor(
                                         val viewportBottom = viewportTop + currentViewportHeight
 
                                         if (absoluteCursorBottom > viewportBottom) {
-                                            scrollState.animateScrollTo((absoluteCursorBottom - currentViewportHeight).toInt())
+                                            val target = (absoluteCursorBottom - currentViewportHeight).toInt()
+                                            if (isAutoJumping) {
+                                                scrollState.scrollTo(target)
+                                                isAutoJumping = false
+                                            } else {
+                                                scrollState.animateScrollTo(target)
+                                            }
                                         } else if (absoluteCursorTop < viewportTop) {
-                                            scrollState.animateScrollTo(absoluteCursorTop.toInt())
+                                            val target = absoluteCursorTop.toInt()
+                                            if (isAutoJumping) {
+                                                scrollState.scrollTo(target)
+                                                isAutoJumping = false
+                                            } else {
+                                                scrollState.animateScrollTo(target)
+                                            }
                                         }
                                     } catch (e: Exception) {}
                                 }
@@ -1383,7 +1709,7 @@ fun SNoteEditor(
                         }
                     } // End interceptor box
 
-                            // Overlay page info and numbers in the gaps
+                             // Overlay page info and numbers in the gaps
                             for (i in 0 until pageCount) {
                                 val pageGap = SNoteConfig.PAGE_GAP_DP * currentDensity
                                 val gapCenterOffset = (pageHeightPx - (pageGap / 2f))
@@ -1393,13 +1719,14 @@ fun SNoteEditor(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(end = 16.dp)
                                         .offset(y = gapCenterY - 12.dp), // Center the 24dp high box
-                                    contentAlignment = androidx.compose.ui.Alignment.Center
+                                    contentAlignment = androidx.compose.ui.Alignment.CenterEnd
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .background(
-                                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
                                                 shape = RoundedCornerShape(4.dp)
                                             )
                                             .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -1407,7 +1734,7 @@ fun SNoteEditor(
                                     ) {
                                         Text(
                                             text = "Page ${i + 1}",
-                                            color = androidx.compose.ui.graphics.Color.Gray,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontSize = 12.sp,
                                             fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                                         )
@@ -1415,7 +1742,7 @@ fun SNoteEditor(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
                                                 text = "($rowsPerPage rows)",
-                                                color = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.6f),
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                                 fontSize = 11.sp
                                             )
                                         }

@@ -317,7 +317,7 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                                                         visualRows += 1
                                                                     }
                                                                 }
-                                                                val endRow = startRow + visualRows
+                                                                val endRow = startRow + kotlin.math.max(0, visualRows - 1)
 
                                                                 if (clickedRowIndex in startRow..endRow) {
                                                                     hitIndex = i
@@ -466,6 +466,12 @@ BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                                             if (l.points.isEmpty()) continue
 
                                                             if (l.isEraser) {
+                                                                remainingLines.add(l)
+                                                                continue
+                                                            }
+
+                                                            // Prevent lasso from selecting text items
+                                                            if (l.text != null) {
                                                                 remainingLines.add(l)
                                                                 continue
                                                             }

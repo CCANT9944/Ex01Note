@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -159,7 +160,10 @@ fun ChecklistEditor(
                             }
                             Text(
                                 text = leadingLabel,
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 20.sp,
+                                    lineHeight = 28.sp
+                                ),
                                 modifier = Modifier.padding(horizontal = 8.dp)
                             )
                         }
@@ -184,7 +188,9 @@ fun ChecklistEditor(
                             singleLine = true,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 textDecoration = if (listStyle == NoteListStyles.CHECKLIST && item.isChecked) TextDecoration.LineThrough else null,
-                                color = if (listStyle == NoteListStyles.CHECKLIST && item.isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                                color = if (listStyle == NoteListStyles.CHECKLIST && item.isChecked) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 20.sp,
+                                lineHeight = 28.sp
                             ),
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,

@@ -51,4 +51,13 @@ The app operates on a clean, domain-driven package structure:
   - **Strict Visual Containment**: Applied hard `clip(RectangleShape)` masking and quantized height constraints to the text input layer. This ensures that the blinking cursor is physically cut off at the exact pixel where the white page ends, eliminating visual "bleed" into the grey gaps.
   - **Grid-Aligned UI Indicators**: Relocated "Page X (Y rows)" indicators to be perfectly centered within the vertical page gaps. These labels now dynamically calculate and display the available row count based on current text size, providing a clear visual guide for document length.
   - **Synchronized Typography**: Linked visual `lineHeight` directly to the mathematical `rowHeight` configuration. This ensures that every line of text stays perfectly locked to the page grid, preventing overlapping or "twisted" text during multi-page jumps.
+- **S-Note Pagination Stability & Cursor Precision**: Hardened the pagination engine to eliminate text "shattering" and erratic cursor jumps.
+  - **Phantom Wrap Suppression**: Fixed a bug where the cursor at the end of a block would incorrectly trigger a reflow, preventing the document from shifting downwards unnecessarily.
+  - **Paragraph Reunification ("Healing")**: Overhauled the `mergedGroup` logic to allow text chunks split by page gaps (~110px) to successfully "heal" back into a single paragraph when moved onto the same page, with an increased merge threshold of 150px.
+  - **Hit-Test Accuracy**: Corrected an off-by-one error in the row-based tap detection that caused upper text blocks to "hijack" taps intended for blocks below them.
+  - **Index Comparison Fix**: Resolved a critical logic error in the line-splitting engine that compared line indices to character offsets, which previously caused text duplication and overlap during page breaks.
+- **S-Note UI & Visibility Polish**:
+  - **Theme-Aware Indicators**: Updated "Page X" indicators to use dynamic `onSurface` colors and made the page gap background theme-aware (`surfaceVariant`), ensuring perfect visibility in both Light and Dark modes.
+  - **Right-Aligned Page Numbering**: Relocated page indicators to the right side of the gap for a cleaner, more professional visual balance.
+- **Workflow & Tooling Updates**: Standardized typography across the app (20.sp for text notes) and removed redundant "Change Style" options from the S-Note context menu. Refined the Lasso tool to explicitly handle ink only, preventing accidental interaction with typed text.
 - **App Branding**: Refreshed the app launcher icon using a bold purple background with crisp white folder accents, drastically improving its visual presence on the Android home screen.

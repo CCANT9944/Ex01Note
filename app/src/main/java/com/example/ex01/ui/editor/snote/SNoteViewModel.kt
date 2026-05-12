@@ -8,6 +8,7 @@ class SNoteViewModel : ViewModel() {
     val undoStack = mutableStateListOf<List<DrawingLine>>()
     val redoStack = mutableStateListOf<List<DrawingLine>>()
     var preEditTextState by mutableStateOf<List<DrawingLine>?>(null)
+    var layoutBaselineState by mutableStateOf<List<DrawingLine>?>(null)
     var preLassoState by mutableStateOf<List<DrawingLine>?>(null)
     
     fun pushUndoState(state: List<DrawingLine> = drawingLines.toList() + selectedLines.toList()) {
@@ -47,6 +48,7 @@ class SNoteViewModel : ViewModel() {
         selectionDragOffset = Offset.Zero
         selectionScale = 1f
         preEditTextState = null
+        layoutBaselineState = null
         preLassoState = null
         currentPath = null
         lassoPath = null
