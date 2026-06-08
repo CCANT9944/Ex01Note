@@ -178,13 +178,7 @@ fun NoteEditScreen(
                                 expanded = showSNoteMenu,
                                 onDismissRequest = { showSNoteMenu = false }
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text("Add Page") },
-                                    onClick = {
-                                        sNoteViewModel.triggerAddPage = true
-                                        showSNoteMenu = false
-                                    }
-                                )
+                                // Future options can be added here
                             }
                         }
                     }

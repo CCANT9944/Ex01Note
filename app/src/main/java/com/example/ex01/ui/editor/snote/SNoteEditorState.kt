@@ -8,6 +8,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 
 class SNoteEditorState(
     val viewModel: SNoteViewModel,
@@ -31,6 +33,11 @@ class SNoteEditorState(
     var showLassoMenu by mutableStateOf(false)
     var showLassoColorPicker by mutableStateOf(false)
     var lassoMenuPosition by mutableStateOf(Offset.Zero)
+
+    val focusRequester = FocusRequester()
+    val bringIntoViewRequester = BringIntoViewRequester()
+    var activeTextOriginalHeight by mutableFloatStateOf(0f)
+
 
     fun updatePenThickness(t: Float) {
         currentThickness = t
@@ -57,7 +64,89 @@ class SNoteEditorState(
         prefs.edit().putLong("pen_color", c).apply()
     }
 
-    fun commitChanges(onSerializedBodyChange: (String) -> Unit) {
+    fun mergeAdjacentTextBlocks() {
+        if (viewModel.drawingLines.isEmpty() || pageHeightPx <= 0f) return
+        val textLines = viewModel.drawingLines.filter { it.text != null && it.points.isNotEmpty() }
+        if (textLines.size < 2) return
+        
+        val sorted = textLines.sortedBy { it.points.first().y }
+        val toRemove = mutableSetOf<DrawingLine>()
+        val replacements = mutableMapOf<DrawingLine, DrawingLine>()
+        
+        var i = 0
+        while (i < sorted.size) {
+            var current = sorted[i]
+            var j = i + 1
+            while (j < sorted.size) {
+                val next = sorted[j]
+                
+                val currentBottom = current.points.first().y + (staticTextLayouts[current]?.size?.height?.toFloat() ?: SNoteConfig.getRowHeight(current.strokeWidth))
+                val nextTop = next.points.first().y
+                
+                val sameX = kotlin.math.abs(current.points.first().x - next.points.first().x) < 2f
+                val sameSize = kotlin.math.abs(current.strokeWidth - next.strokeWidth) < 0.1f
+                val sameColor = current.color == next.color
+                val samePage = kotlin.math.floor(currentBottom / pageHeightPx) == kotlin.math.floor(nextTop / pageHeightPx)
+                val adjacent = kotlin.math.abs(nextTop - currentBottom) < 5f
+                
+                if (sameX && sameSize && sameColor && samePage && adjacent) {
+                    current = current.copy(text = current.text + "\n" + next.text)
+                    toRemove.add(next)
+                    j++
+                } else {
+                    break
+                }
+            }
+            if (j > i + 1) {
+                replacements[sorted[i]] = current
+            }
+            i = j
+        }
+        
+        if (toRemove.isNotEmpty() || replacements.isNotEmpty()) {
+            val newList = viewModel.drawingLines.mapNotNull { line ->
+                if (toRemove.contains(line)) null
+                else replacements[line] ?: line
+            }
+            viewModel.drawingLines.clear()
+            viewModel.drawingLines.addAll(newList)
+        }
+    }
+
+    fun pushContentBelow(startY: Float, deltaY: Float, excludeLines: Set<DrawingLine> = emptySet(), baseline: List<DrawingLine>? = null): List<DrawingLine> {
+        val source = baseline ?: viewModel.drawingLines.toList()
+        if (deltaY < 1f) return source
+        
+        val updatedLines = source.map { line ->
+            if (excludeLines.contains(line)) return@map line
+            val firstPt = line.points.firstOrNull() ?: return@map line
+            
+            val yThreshold = startY - 5f
+            val shouldPush = if (line.text != null) {
+                firstPt.y >= yThreshold
+            } else {
+                val minY = line.points.minOf { it.y }
+                val maxY = line.points.maxOf { it.y }
+                val centerY = (minY + maxY) / 2f
+                centerY >= yThreshold || minY >= yThreshold
+            }
+            
+            if (shouldPush) {
+                val shiftedPoints = line.points.map { pt -> pt.copy(y = pt.y + deltaY) }
+                line.copy(points = shiftedPoints)
+            } else {
+                line
+            }
+        }
+        
+        if (baseline == null) {
+            viewModel.drawingLines.clear()
+            viewModel.drawingLines.addAll(updatedLines)
+        }
+        return updatedLines
+    }
+
+    fun commitChanges(onSerializedBodyChange: (String) -> Unit = {}) {
         val linesToSave = viewModel.drawingLines.toList().toMutableList()
         if (viewModel.selectedLines.isNotEmpty()) {
             var minX = Float.MAX_VALUE
@@ -115,7 +204,7 @@ class SNoteEditorState(
         onSerializedBodyChange(serializeDrawing(linesToSave))
     }
 
-    fun commitLassoSelection(onSerializedBodyChange: (String) -> Unit) {
+    fun commitLassoSelection(onSerializedBodyChange: (String) -> Unit = {}) {
         if (viewModel.selectedLines.isNotEmpty()) {
             var minX = Float.MAX_VALUE
             var minY = Float.MAX_VALUE
@@ -155,13 +244,7 @@ class SNoteEditorState(
                     strokeWidth = l.strokeWidth * viewModel.selectionScale
                 )
             }
-            if (viewModel.selectionDragOffset != Offset.Zero || viewModel.selectionScale != 1f) {
-                val preLState = viewModel.preLassoState
-                if (preLState != null) {
-                    viewModel.pushUndoState(preLState)
-                }
-            }
-            viewModel.preLassoState = null
+
 
             viewModel.drawingLines.addAll(finalizedLines)
             viewModel.selectedLines.clear()
@@ -171,97 +254,104 @@ class SNoteEditorState(
         }
     }
 
-    fun commitActiveText(onSerializedBodyChange: (String) -> Unit) {
+
+    fun commitActiveText(autoJump: Boolean = false, forcedLayout: androidx.compose.ui.text.TextLayoutResult? = null, onSerializedBodyChange: (String) -> Unit = {}) {
         commitLassoSelection(onSerializedBodyChange)
         if (viewModel.activeTextInputPosition != null) {
-            val savedState = viewModel.preEditTextState ?: viewModel.drawingLines.toList()
+            var currentBlockStartIdx = 0
+            
+            // 1. CAPTURE STABLE BASELINE ONCE PER SESSION
+            if (viewModel.preEditTextState == null) {
+                viewModel.preEditTextState = viewModel.drawingLines.toList()
+                viewModel.layoutBaselineState = viewModel.drawingLines.toList()
+            }
+            val undoBaseline = viewModel.preEditTextState!!
+            val layoutBaseline = viewModel.layoutBaselineState!!
+            
             val textChanged = (viewModel.originalHitLine == null && viewModel.activeTextValue.text.isNotBlank()) ||
                               (viewModel.originalHitLine != null && viewModel.activeTextValue.text != viewModel.originalHitLine!!.text)
 
             if (textChanged) {
-                viewModel.pushUndoState(savedState)
+                // Use the CLEAN baseline for undo
+                viewModel.pushUndoState(undoBaseline)
             }
 
+            var lastBlockY = viewModel.activeTextInputPosition!!.y
+            var lastBlockText = ""
+
             if (!textChanged && viewModel.originalHitLine != null) {
-                val index = if (viewModel.originalHitIndex in 0..viewModel.drawingLines.size) viewModel.originalHitIndex else viewModel.drawingLines.size
-                viewModel.drawingLines.add(index, viewModel.originalHitLine!!)
+                viewModel.drawingLines.clear()
+                viewModel.drawingLines.addAll(undoBaseline)
             } else if (viewModel.activeTextValue.text.isNotBlank()) {
                 val cVal = Color(currentColorValue.toULong())
                 val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                // --- TEXT PAGINATION ALGORITHM ---
+                // --- TEXT PROCESSING ALGORITHM ---
                 val startX = viewModel.activeTextInputPosition!!.x
                 val startY = viewModel.activeTextInputPosition!!.y
                 val fullText = viewModel.activeTextValue.text
 
-                if (activeTextLayoutResult != null && pageHeightPx > 0f) {
-                    val layRes = activeTextLayoutResult!!
-                    var currentBlockStartIdx = 0
-                    var currentBlockY = startY
-                    var cumulativeGapOffset = 0f
-
-                    for (i in 0 until layRes.lineCount) {
-                        val virtualTop = startY + layRes.getLineTop(i) + cumulativeGapOffset
-                        val virtualBottom = startY + layRes.getLineBottom(i) + cumulativeGapOffset
-                        val targetPage = kotlin.math.floor((virtualTop / pageHeightPx).toDouble()).toInt()
-                        val pageBottom = (targetPage + 1) * pageHeightPx - (SNoteConfig.PAGE_GAP_DP * currentDensity)
-
-                        if (virtualBottom > pageBottom) {
-                            if (i > 0) {
-                                val endIdx = layRes.getLineEnd(i - 1)
-                                if (endIdx > currentBlockStartIdx) {
-                                    viewModel.drawingLines.add(
-                                        DrawingLine(
-                                            points = listOf(Offset(startX, currentBlockY)),
-                                            color = chosenColor,
-                                            strokeWidth = currentTextSize,
-                                            text = fullText.substring(currentBlockStartIdx, endIdx).trimEnd('\n', '\r')
-                                        )
-                                    )
-                                }
-                                currentBlockStartIdx = layRes.getLineStart(i)
-                            }
-
-                            val nxtPage = targetPage + 1
-                            var newBlockY = nxtPage * pageHeightPx + (32f * currentDensity)
-                            val rowHeight = SNoteConfig.getRowHeight(TEXT_LARGE)
-                            newBlockY = kotlin.math.ceil((newBlockY / rowHeight).toDouble()).toFloat() * rowHeight
-
-                            cumulativeGapOffset += (newBlockY - virtualTop)
-                            currentBlockY = newBlockY
-                        }
+                val layRes = forcedLayout ?: activeTextLayoutResult
+                if (layRes != null) {
+                    val finalBlockHeight = layRes.size.height.toFloat()
+                    val newBottomY = startY + finalBlockHeight
+                    
+                    val sessionTopY = viewModel.activeTextInputPosition!!.y
+                    val originalBottomY = sessionTopY + activeTextOriginalHeight
+                    
+                    val deltaY = newBottomY - originalBottomY
+                    
+                    val pushedBaseline = if (deltaY > 1f) {
+                        pushContentBelow(originalBottomY, deltaY, baseline = layoutBaseline)
+                    } else {
+                        layoutBaseline
                     }
-                    if (currentBlockStartIdx < fullText.length) {
-                        viewModel.drawingLines.add(
-                            DrawingLine(
-                                points = listOf(Offset(startX, currentBlockY)),
-                                color = chosenColor,
-                                strokeWidth = currentTextSize,
-                                text = fullText.substring(currentBlockStartIdx, fullText.length)
-                            )
-                        )
-                    }
+                    
+                    viewModel.drawingLines.clear()
+                    viewModel.drawingLines.addAll(pushedBaseline)
+                    
+                    val cleanText = fullText.replace("\r", "").trimEnd('\n')
+                    viewModel.drawingLines.add(
+                        DrawingLine(listOf(Offset(startX, startY)), chosenColor, currentTextSize, text = cleanText)
+                    )
                 } else {
-                    // Fallback block mapping if no precise text layout
+                    val cleanText = fullText.replace("\r", "")
                     viewModel.drawingLines.add(
                         DrawingLine(
                             points = listOf(Offset(startX, startY)),
                             color = chosenColor,
                             strokeWidth = currentTextSize,
-                            text = fullText
+                            text = cleanText
                         )
                     )
                 }
                 // ------------------------------------
             }
 
-            viewModel.preEditTextState = null
-            viewModel.originalHitLine = null
-            viewModel.originalHitIndex = -1
-            viewModel.activeTextInputPosition = null
-            viewModel.activeTextValue = TextFieldValue("")
+
+            if (!autoJump) {
+                viewModel.preEditTextState = null
+                viewModel.layoutBaselineState = null
+                viewModel.originalHitLine = null
+                viewModel.originalHitIndex = -1
+                viewModel.activeTextInputPosition = null
+                viewModel.activeTextValue = TextFieldValue("")
+                activeTextLayoutResult = null
+                activeTextOriginalHeight = 0f
+            } else if ((forcedLayout ?: activeTextLayoutResult) == null) {
+                // MID-EDIT Fallback
+                viewModel.activeTextInputPosition = Offset(viewModel.activeTextInputPosition!!.x, lastBlockY)
+                val originalSelection = viewModel.activeTextValue.selection.end
+                val relSelection = (originalSelection - currentBlockStartIdx).coerceIn(0, lastBlockText.length)
+                viewModel.activeTextValue = TextFieldValue(lastBlockText, selection = androidx.compose.ui.text.TextRange(relSelection))
+            }
+            mergeAdjacentTextBlocks()
             commitChanges(onSerializedBodyChange)
         }
     }
+
+
+
+
 }
 
 @Composable

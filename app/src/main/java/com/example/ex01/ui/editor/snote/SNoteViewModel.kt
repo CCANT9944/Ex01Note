@@ -79,7 +79,7 @@ class SNoteViewModel : ViewModel() {
     var originalHitLine by mutableStateOf<DrawingLine?>(null)
     var originalHitIndex by mutableIntStateOf(-1)
 
-    var triggerAddPage by mutableStateOf(false)
+
 
     suspend fun getLassoBox(lines: List<DrawingLine>): Pair<Offset, Offset>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
         if (lines.isEmpty()) return@withContext null

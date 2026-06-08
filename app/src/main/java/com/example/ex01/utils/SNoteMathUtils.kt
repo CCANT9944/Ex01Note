@@ -4,20 +4,26 @@ import com.example.ex01.ui.editor.snote.SNoteConfig
 import androidx.compose.ui.geometry.Offset
 import com.example.ex01.ui.editor.snote.DrawingLine
 
-fun isPointInSelectionBounds(
-    point: Offset,
-    selectedLines: List<DrawingLine>,
-    dragOffset: Offset,
-    scale: Float,
+data class SelectionBounds(
+    val minX: Float,
+    val minY: Float,
+    val maxX: Float,
+    val maxY: Float
+) {
+    val cX: Float get() = (minX + maxX) / 2f
+    val cY: Float get() = (minY + maxY) / 2f
+}
+
+fun computeSelectionBounds(
+    lines: List<DrawingLine>,
     textBounds: Map<DrawingLine, Pair<Float, Float>> = emptyMap()
-): Boolean {
-    if (selectedLines.isEmpty()) return false
+): SelectionBounds? {
     var minX = Float.MAX_VALUE
     var minY = Float.MAX_VALUE
     var maxX = Float.MIN_VALUE
     var maxY = Float.MIN_VALUE
-    selectedLines.forEach { l ->
-        if (l.isEraser) return@forEach
+    for (l in lines) {
+        if (l.isEraser) continue
         if (l.text != null && l.points.isNotEmpty()) {
             val startPt = l.points.first()
             val bounds = textBounds[l]
@@ -29,7 +35,7 @@ fun isPointInSelectionBounds(
             if (startPt.y + th > maxY) maxY = startPt.y + th
         } else {
             val halfStroke = l.strokeWidth / 2f
-            l.points.forEach { pt ->
+            for (pt in l.points) {
                 if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
                 if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
                 if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
@@ -37,18 +43,23 @@ fun isPointInSelectionBounds(
             }
         }
     }
+    return if (minX <= maxX && minY <= maxY) SelectionBounds(minX, minY, maxX, maxY) else null
+}
 
-    val cX = (minX + maxX) / 2f
-    val cY = (minY + maxY) / 2f
-
-    val sMinX = cX + (minX - cX) * scale + dragOffset.x
-    val sMinY = cY + (minY - cY) * scale + dragOffset.y
-    val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
-    val sMaxY = cY + (maxY - cY) * scale + dragOffset.y
-
-    val boundsPadding = SNoteConfig.PAGE_GAP_DP
-    return point.x in (sMinX - boundsPadding)..(sMaxX + boundsPadding) &&
-           point.y in (sMinY - boundsPadding)..(sMaxY + boundsPadding)
+fun isPointInSelectionBounds(
+    point: Offset,
+    selectedLines: List<DrawingLine>,
+    dragOffset: Offset,
+    scale: Float,
+    textBounds: Map<DrawingLine, Pair<Float, Float>> = emptyMap()
+): Boolean {
+    val b = computeSelectionBounds(selectedLines, textBounds) ?: return false
+    val sMinX = b.cX + (b.minX - b.cX) * scale + dragOffset.x
+    val sMinY = b.cY + (b.minY - b.cY) * scale + dragOffset.y
+    val sMaxX = b.cX + (b.maxX - b.cX) * scale + dragOffset.x
+    val sMaxY = b.cY + (b.maxY - b.cY) * scale + dragOffset.y
+    val pad = SNoteConfig.PAGE_GAP_DP
+    return point.x in (sMinX - pad)..(sMaxX + pad) && point.y in (sMinY - pad)..(sMaxY + pad)
 }
 
 fun isPointInScaleHandle(
@@ -58,46 +69,12 @@ fun isPointInScaleHandle(
     scale: Float,
     textBounds: Map<DrawingLine, Pair<Float, Float>> = emptyMap()
 ): Boolean {
-    if (selectedLines.isEmpty()) return false
-    var minX = Float.MAX_VALUE
-    var minY = Float.MAX_VALUE
-    var maxX = Float.MIN_VALUE
-    var maxY = Float.MIN_VALUE
-    selectedLines.forEach { l ->
-        if (l.isEraser) return@forEach
-        if (l.text != null && l.points.isNotEmpty()) {
-            val startPt = l.points.first()
-            val bounds = textBounds[l]
-            val tw = bounds?.first ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-            val th = bounds?.second ?: (l.strokeWidth * 1.5f)
-            if (startPt.x < minX) minX = startPt.x
-            if (startPt.y < minY) minY = startPt.y
-            if (startPt.x + tw > maxX) maxX = startPt.x + tw
-            if (startPt.y + th > maxY) maxY = startPt.y + th
-        } else {
-            val halfStroke = l.strokeWidth / 2f
-            l.points.forEach { pt ->
-                if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
-            }
-        }
-    }
-    val cX = (minX + maxX) / 2f
-    val cY = (minY + maxY) / 2f
-
-    val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
-    val sMaxY = cY + (maxY - cY) * scale + dragOffset.y
-
-    val boundsPadding = 16f
-    val handleX = sMaxX + boundsPadding
-    val handleY = sMaxY + boundsPadding
-    val hitRadius = 60f // generous hit area for touch
-
-    val dx = point.x - handleX
-    val dy = point.y - handleY
-    return (dx * dx + dy * dy) <= hitRadius * hitRadius
+    val b = computeSelectionBounds(selectedLines, textBounds) ?: return false
+    val sMaxX = b.cX + (b.maxX - b.cX) * scale + dragOffset.x
+    val sMaxY = b.cY + (b.maxY - b.cY) * scale + dragOffset.y
+    val dx = point.x - (sMaxX + 16f)
+    val dy = point.y - (sMaxY + 16f)
+    return dx * dx + dy * dy <= 60f * 60f
 }
 
 fun isPointInMenuHandle(
@@ -107,46 +84,12 @@ fun isPointInMenuHandle(
     scale: Float,
     textBounds: Map<DrawingLine, Pair<Float, Float>> = emptyMap()
 ): Boolean {
-    if (selectedLines.isEmpty()) return false
-    var minX = Float.MAX_VALUE
-    var minY = Float.MAX_VALUE
-    var maxX = Float.MIN_VALUE
-    var maxY = Float.MIN_VALUE
-    selectedLines.forEach { l ->
-        if (l.isEraser) return@forEach
-        if (l.text != null && l.points.isNotEmpty()) {
-            val startPt = l.points.first()
-            val bounds = textBounds[l]
-            val tw = bounds?.first ?: (l.strokeWidth * 0.6f * l.text.length.toFloat())
-            val th = bounds?.second ?: (l.strokeWidth * 1.5f)
-            if (startPt.x < minX) minX = startPt.x
-            if (startPt.y < minY) minY = startPt.y
-            if (startPt.x + tw > maxX) maxX = startPt.x + tw
-            if (startPt.y + th > maxY) maxY = startPt.y + th
-        } else {
-            val halfStroke = l.strokeWidth / 2f
-            l.points.forEach { pt ->
-                if (pt.x - halfStroke < minX) minX = pt.x - halfStroke
-                if (pt.y - halfStroke < minY) minY = pt.y - halfStroke
-                if (pt.x + halfStroke > maxX) maxX = pt.x + halfStroke
-                if (pt.y + halfStroke > maxY) maxY = pt.y + halfStroke
-            }
-        }
-    }
-    val cX = (minX + maxX) / 2f
-    val cY = (minY + maxY) / 2f
-
-    val sMaxX = cX + (maxX - cX) * scale + dragOffset.x
-    val sMinY = cY + (minY - cY) * scale + dragOffset.y
-
-    val boundsPadding = 16f
-    val handleX = sMaxX + boundsPadding
-    val handleY = sMinY - boundsPadding
-    val hitRadius = 60f
-
-    val dx = point.x - handleX
-    val dy = point.y - handleY
-    return (dx * dx + dy * dy) <= hitRadius * hitRadius
+    val b = computeSelectionBounds(selectedLines, textBounds) ?: return false
+    val sMaxX = b.cX + (b.maxX - b.cX) * scale + dragOffset.x
+    val sMinY = b.cY + (b.minY - b.cY) * scale + dragOffset.y
+    val dx = point.x - (sMaxX + 16f)
+    val dy = point.y - (sMinY - 16f)
+    return dx * dx + dy * dy <= 60f * 60f
 }
 
 fun isPointInPolygon(point: Offset, polygon: List<Offset>): Boolean {

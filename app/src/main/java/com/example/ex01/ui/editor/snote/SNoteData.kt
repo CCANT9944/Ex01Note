@@ -98,6 +98,7 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
             val isEraser = lineObj.optBoolean("isEraser", false)
             val isHighlighter = lineObj.optBoolean("isHighlighter", false)
             val text = if (lineObj.has("text")) lineObj.getString("text") else null
+            val cleanText = text?.replace("\r", "")
 
             // Heuristic for old lines without isEraser flag: old eraser lines either matched the default M3 surface colors or were much thicker (min eraser thickness is 20f, max pen is 12f).
             val inferredEraser = isEraser || (!lineObj.has("isEraser") && (stroke >= 20f || rawColor == Color(0xFFFFFBFE) || rawColor == Color(0xFF1C1B1F) || rawColor == Color(0xFF141218)))
@@ -109,12 +110,25 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
                 rawColor
             }
 
-            val line = DrawingLine(points, finalColor, stroke, inferredEraser, isHighlighter, text)
+            val line = DrawingLine(points, finalColor, stroke, inferredEraser, isHighlighter, cleanText)
             line.toPath() // precalculate in background to prevent UI freeze
             lines.add(line)
         }
     } catch (e: Exception) {
         e.printStackTrace()
     }
-    return lines
+    
+    val seenTextBlocks = mutableSetOf<String>()
+    val uniqueLines = mutableListOf<DrawingLine>()
+    for (line in lines) {
+        if (line.text != null) {
+            val key = "${line.points.first().x},${line.points.first().y}:${line.text}"
+            if (seenTextBlocks.add(key)) {
+                uniqueLines.add(line)
+            }
+        } else {
+            uniqueLines.add(line)
+        }
+    }
+    return uniqueLines
 }
