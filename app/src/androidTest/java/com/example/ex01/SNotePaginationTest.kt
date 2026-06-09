@@ -31,11 +31,13 @@ class SNotePaginationTest {
         viewModel.pageCount = 1
 
         composeTestRule.setContent {
+            val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+            val bringIntoViewRequester = androidx.compose.runtime.remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
             SNoteCanvas(
                 viewModel = viewModel,
                 state = state,
-                focusRequester = androidx.compose.ui.focus.FocusRequester(),
-                bringIntoViewRequester = androidx.compose.foundation.relocation.BringIntoViewRequester(),
+                focusRequester = focusRequester,
+                bringIntoViewRequester = bringIntoViewRequester,
                 commitChanges = {},
                 commitActiveText = {
                     state.commitActiveText(onSerializedBodyChange = {})
@@ -106,11 +108,13 @@ class SNotePaginationTest {
         viewModel.pageCount = 1
 
         composeTestRule.setContent {
+            val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+            val bringIntoViewRequester = androidx.compose.runtime.remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
             SNoteCanvas(
                 viewModel = viewModel,
                 state = state,
-                focusRequester = androidx.compose.ui.focus.FocusRequester(),
-                bringIntoViewRequester = androidx.compose.foundation.relocation.BringIntoViewRequester(),
+                focusRequester = focusRequester,
+                bringIntoViewRequester = bringIntoViewRequester,
                 commitChanges = {},
                 commitActiveText = {
                     state.commitActiveText(onSerializedBodyChange = {})

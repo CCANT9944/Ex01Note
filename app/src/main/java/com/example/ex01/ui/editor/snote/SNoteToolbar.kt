@@ -1,4 +1,4 @@
-﻿package com.example.ex01.ui.editor.snote
+package com.example.ex01.ui.editor.snote
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -349,32 +349,6 @@ fun SNoteToolbar(
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo", modifier = Modifier.size(20.dp))
                     }
                 } // Close Scrollable Row
-
-                // Fixed right-side actions
-                Row(
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 4.dp)
-                            .height(20.dp)
-                            .width(1.dp)
-                            .background(dividerColor)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    TextButton(
-                        onClick = {
-                            commitActiveText()
-                            if (drawingLines.isNotEmpty()) {
-                                showClearWarning = true
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Clear All", fontSize = 14.sp)
-                    }
-                }
             } // Close Outer Row
         } // Close Surface Toolbar
 

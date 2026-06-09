@@ -178,7 +178,15 @@ fun NoteEditScreen(
                                 expanded = showSNoteMenu,
                                 onDismissRequest = { showSNoteMenu = false }
                             ) {
-                                // Future options can be added here
+                                DropdownMenuItem(
+                                    text = { Text("Clear All", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showSNoteMenu = false
+                                        if (sNoteViewModel.drawingLines.isNotEmpty() || sNoteViewModel.activeTextInputPosition != null) {
+                                            sNoteViewModel.showClearWarning = true
+                                        }
+                                    }
+                                )
                             }
                         }
                     }

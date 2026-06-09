@@ -119,6 +119,9 @@ fun SNoteEditor(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        viewModel.activeTextInputPosition = null
+                        viewModel.activeTextValue = androidx.compose.ui.text.input.TextFieldValue("")
+                        viewModel.selectedLines.clear()
                         drawingLines.clear()
                         commitChanges()
                         showClearWarning = false

@@ -423,7 +423,32 @@ private fun handleTextTap(
         commitChanges()
     } else {
         val defaultIndent = 16f * state.currentDensity
-        val finalY = targetY
+        
+        var extrapolatedY = targetY
+        var minDistance = Float.MAX_VALUE
+
+        for (l in viewModel.drawingLines) {
+            if (l.text != null && l.points.isNotEmpty()) {
+                val layRes = state.staticTextLayouts[l]
+                if (layRes != null) {
+                    val blockTop = l.points.first().y
+                    val blockBottom = blockTop + layRes.size.height
+                    if (tapPos.y >= blockBottom) {
+                        val dist = tapPos.y - blockBottom
+                        if (dist < minDistance && dist < rowHeight * 3f) {
+                            minDistance = dist
+                            val lineCount = l.text.split("\n").size.coerceAtLeast(1)
+                            val actualRowHeight = layRes.size.height.toFloat() / lineCount
+                            val rowsBelow = kotlin.math.round(dist / actualRowHeight)
+                            extrapolatedY = blockBottom + rowsBelow * actualRowHeight
+                        }
+                    }
+                }
+            }
+        }
+        
+        val finalY = if (minDistance < Float.MAX_VALUE) extrapolatedY else targetY
+        
         viewModel.activeTextInputPosition = Offset(defaultIndent, finalY)
         viewModel.activeTextValue = androidx.compose.ui.text.input.TextFieldValue("")
         state.activeTextLayoutResult = null
