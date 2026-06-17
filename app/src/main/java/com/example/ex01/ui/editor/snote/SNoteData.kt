@@ -61,10 +61,8 @@ fun serializeDrawing(lines: List<DrawingLine>): String {
     for (line in lines) {
         val pointArray = JSONArray()
         for (point in line.points) {
-            val pObj = JSONObject()
-            pObj.put("x", point.x)
-            pObj.put("y", point.y)
-            pointArray.put(pObj)
+            pointArray.put(point.x.toDouble())
+            pointArray.put(point.y.toDouble())
         }
         val lineObj = JSONObject()
         lineObj.put("points", pointArray)
@@ -89,9 +87,23 @@ fun deserializeDrawing(json: String): List<DrawingLine> {
             val lineObj = jsonArray.getJSONObject(i)
             val pointArray = lineObj.getJSONArray("points")
             val points = mutableListOf<Offset>()
-            for (p in 0 until pointArray.length()) {
-                val pObj = pointArray.getJSONObject(p)
-                points.add(Offset(pObj.getDouble("x").toFloat(), pObj.getDouble("y").toFloat()))
+            if (pointArray.length() > 0) {
+                val first = pointArray.opt(0)
+                if (first is JSONObject) {
+                    for (p in 0 until pointArray.length()) {
+                        val pObj = pointArray.getJSONObject(p)
+                        points.add(Offset(pObj.getDouble("x").toFloat(), pObj.getDouble("y").toFloat()))
+                    }
+                } else {
+                    for (p in 0 until pointArray.length() step 2) {
+                        if (p + 1 < pointArray.length()) {
+                            points.add(Offset(
+                                pointArray.getDouble(p).toFloat(),
+                                pointArray.getDouble(p + 1).toFloat()
+                            ))
+                        }
+                    }
+                }
             }
             val rawColor = Color(lineObj.optLong("color", Color.Unspecified.value.toLong()).toULong())
             val stroke = lineObj.optDouble("stroke", 5.0).toFloat()

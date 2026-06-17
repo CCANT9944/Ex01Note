@@ -170,4 +170,60 @@ class SNotePaginationTest {
             }
         }
     }
+
+    @Test
+    fun testDrawingSerializationAndDeserialization() {
+        val lines = listOf(
+            DrawingLine(
+                points = listOf(Offset(10f, 20f), Offset(30f, 40f)),
+                color = androidx.compose.ui.graphics.Color.Red,
+                strokeWidth = 6f,
+                isEraser = false,
+                isHighlighter = false,
+                text = null
+            ),
+            DrawingLine(
+                points = listOf(Offset(50f, 60f)),
+                color = androidx.compose.ui.graphics.Color.Blue,
+                strokeWidth = 12f,
+                isEraser = true,
+                isHighlighter = false,
+                text = "Hello"
+            )
+        )
+
+        // 1. Test serialization format
+        val jsonStr = com.example.ex01.ui.editor.snote.serializeDrawing(lines)
+        
+        // Assert that the serialized string contains flat points array
+        assertTrue("Serialized JSON should contain flat point list", jsonStr.contains("[10,20,30,40]"))
+
+        // 2. Test round-trip deserialization
+        val deserialized = com.example.ex01.ui.editor.snote.deserializeDrawing(jsonStr)
+        assertEquals(lines.size, deserialized.size)
+        
+        assertEquals(lines[0].points, deserialized[0].points)
+        assertEquals(lines[0].strokeWidth, deserialized[0].strokeWidth)
+        assertEquals(lines[0].isEraser, deserialized[0].isEraser)
+        assertEquals(lines[0].isHighlighter, deserialized[0].isHighlighter)
+        
+        assertEquals(lines[1].points, deserialized[1].points)
+        assertEquals(lines[1].text, deserialized[1].text)
+
+        // 3. Test backward compatibility (deserialize old format)
+        val oldJson = """
+            [
+                {
+                    "points": [{"x":10.0,"y":20.0},{"x":30.0,"y":40.0}],
+                    "color": ${androidx.compose.ui.graphics.Color.Red.value.toLong()},
+                    "stroke": 6.0,
+                    "isEraser": false,
+                    "isHighlighter": false
+                }
+            ]
+        """.trimIndent()
+        val deserializedOld = com.example.ex01.ui.editor.snote.deserializeDrawing(oldJson)
+        assertEquals(1, deserializedOld.size)
+        assertEquals(listOf(Offset(10f, 20f), Offset(30f, 40f)), deserializedOld[0].points)
+    }
 }

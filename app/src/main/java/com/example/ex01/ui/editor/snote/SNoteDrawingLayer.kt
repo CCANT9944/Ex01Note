@@ -535,6 +535,14 @@ private fun finalizeLassoSelection(viewModel: SNoteViewModel, state: SNoteEditor
             remaining.add(l)
             continue
         }
+        val lMinX = l.points.minOf { it.x }
+        val lMaxX = l.points.maxOf { it.x }
+        val lMinY = l.points.minOf { it.y }
+        val lMaxY = l.points.maxOf { it.y }
+        if (lMinX > maxX || lMaxX < minX || lMinY > maxY || lMaxY < minY) {
+            remaining.add(l)
+            continue
+        }
         val isSelected = l.points.any { pt ->
             if (!lassoRect.contains(pt)) return@any false
             if (!isPointInPolygon(pt, capturedPath)) return@any false
