@@ -3,6 +3,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
+import androidx.compose.ui.graphics.Path
+
 class SNoteViewModel : ViewModel() {
     val drawingLines = mutableStateListOf<DrawingLine>()
     val undoStack = mutableStateListOf<List<DrawingLine>>()
@@ -51,10 +53,12 @@ class SNoteViewModel : ViewModel() {
         layoutBaselineState = null
         preLassoState = null
         currentPath = null
+        activePathObject = null
         lassoPath = null
     }
 
     var currentPath by mutableStateOf<List<Offset>?>(null)
+    var activePathObject: Path? = null
     var currentProperties by mutableStateOf(DrawingLine(emptyList()))
     var isEraserMode by mutableStateOf(false)
     var isHighlighterMode by mutableStateOf(false)

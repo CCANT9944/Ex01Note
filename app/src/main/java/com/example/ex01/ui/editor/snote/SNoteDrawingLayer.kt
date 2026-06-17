@@ -1,6 +1,7 @@
 package com.example.ex01.ui.editor.snote
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
@@ -27,184 +28,203 @@ fun SNoteDrawingLayer(
     commitChanges: () -> Unit,
     commitActiveText: (Boolean) -> Unit
 ) {
-    Canvas(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(state.pageHeightDp * viewModel.pageCount)
             .graphicsLayer(alpha = 0.99f)
-            .pointerInput(
-                state.currentColorValue, state.currentThickness, state.currentEraserThickness,
-                viewModel.isEraserMode, viewModel.isTextMode, viewModel.isLassoMode
-            ) {
-                awaitPointerEventScope {
-                    var textModeDownPos: Offset? = null
-                    var dragStartOffset = Offset.Zero
-                    var dragStartScale = 1f
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: continue
+    ) {
+        // 1. Static Canvas Layer (caches saved drawing strokes)
+        Canvas(
+            modifier = Modifier.matchParentSize()
+        ) {
+            drawSavedLines(viewModel, state, strokeColor)
+        }
 
-                        if (change.isConsumed) {
-                            textModeDownPos = null
-                            continue
-                        }
+        // 2. Dynamic Interaction Overlay (handles pointer input and active drawings/selections)
+        Canvas(
+            modifier = Modifier
+                .matchParentSize()
+                .pointerInput(
+                    state.currentColorValue, state.currentThickness, state.currentEraserThickness,
+                    viewModel.isEraserMode, viewModel.isTextMode, viewModel.isLassoMode
+                ) {
+                    awaitPointerEventScope {
+                        var textModeDownPos: Offset? = null
+                        var dragStartOffset = Offset.Zero
+                        var dragStartScale = 1f
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: continue
 
-                        val isStylus = change.type == PointerType.Stylus
-                        val isStylusEraser = change.type == PointerType.Eraser
-
-                        if (!isStylus && !isStylusEraser && !viewModel.isTextMode) continue
-
-                        if (!viewModel.isTextMode) change.consume()
-
-                        // ── POINTER DOWN ──────────────────────────────────────────────────
-                        if (change.pressed && !change.previousPressed) {
-                            if (state.pageHeightPx > 0f) {
-                                // Gaps removed
-                            }
-
-                            if (viewModel.isTextMode) {
-                                textModeDownPos = change.position
-                            } else if (viewModel.isLassoMode) {
-                                change.consume()
-                                val tapPos = change.position
-                                val tBounds = viewModel.selectedLines
-                                    .filter { it.text != null }
-                                    .associateWith { l ->
-                                        val tw = state.staticTextLayouts[l]?.size?.width?.toFloat()
-                                            ?: (l.strokeWidth * 0.6f * l.text!!.length.toFloat())
-                                        val th = state.staticTextLayouts[l]?.size?.height?.toFloat()
-                                            ?: (l.strokeWidth * 1.5f)
-                                        Pair(tw, th)
-                                    }
-                                val draggingHandle = viewModel.selectedLines.isNotEmpty() &&
-                                    isPointInScaleHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
-                                val hittingMenuHandle = viewModel.selectedLines.isNotEmpty() &&
-                                    isPointInMenuHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
-                                val dragging = !draggingHandle && !hittingMenuHandle &&
-                                    viewModel.selectedLines.isNotEmpty() &&
-                                    isPointInSelectionBounds(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
-
-                                when {
-                                    hittingMenuHandle -> {
-                                        state.showLassoMenu = true
-                                        state.showLassoColorPicker = false
-                                        state.lassoMenuPosition = tapPos
-                                    }
-                                    draggingHandle -> {
-                                        if (viewModel.preLassoState == null)
-                                            viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
-                                        viewModel.isScalingSelection = true
-                                        state.showLassoMenu = false
-                                        state.showLassoColorPicker = false
-                                        dragStartScale = viewModel.selectionScale
-                                        dragStartOffset = viewModel.selectionDragOffset
-                                    }
-                                    dragging -> {
-                                        if (viewModel.preLassoState == null)
-                                            viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
-                                        viewModel.isDraggingSelection = true
-                                        state.showLassoMenu = false
-                                        state.showLassoColorPicker = false
-                                        dragStartOffset = viewModel.selectionDragOffset
-                                        dragStartScale = viewModel.selectionScale
-                                    }
-                                    else -> {
-                                        state.showLassoMenu = false
-                                        state.showLassoColorPicker = false
-                                        if (viewModel.selectedLines.isNotEmpty())
-                                            state.commitLassoSelection { commitChanges() }
-                                        viewModel.lassoPath = listOf(tapPos)
-                                    }
-                                }
-                            } else if (viewModel.currentPath == null) {
-                                commitActiveText(false)
-                                viewModel.currentPath = listOf(change.position)
-                                val actualEraserMode = isStylusEraser || viewModel.isEraserMode
-                                val cVal = Color(state.currentColorValue.toULong())
-                                val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
-                                viewModel.currentProperties = DrawingLine(
-                                    points = viewModel.currentPath!!,
-                                    color = if (actualEraserMode) Color.Unspecified else chosenColor,
-                                    strokeWidth = when {
-                                        actualEraserMode -> state.currentEraserThickness
-                                        viewModel.isHighlighterMode -> state.currentHighlighterThickness
-                                        else -> state.currentThickness
-                                    },
-                                    isEraser = actualEraserMode,
-                                    isHighlighter = viewModel.isHighlighterMode
-                                )
-                            }
-
-                        // ── POINTER MOVE ──────────────────────────────────────────────────
-                        } else if (change.pressed && change.previousPressed) {
-                            if (viewModel.isLassoMode) {
-                                change.consume()
-                                when {
-                                    viewModel.isScalingSelection -> {
-                                        val dx = change.position.x - change.previousPosition.x
-                                        val dy = change.position.y - change.previousPosition.y
-                                        viewModel.selectionScale = kotlin.math.max(0.1f, viewModel.selectionScale + (dx + dy) / 400f)
-                                    }
-                                    viewModel.isDraggingSelection -> {
-                                        viewModel.selectionDragOffset += change.position - change.previousPosition
-                                    }
-                                    viewModel.lassoPath != null -> {
-                                        viewModel.lassoPath = viewModel.lassoPath!! + change.position
-                                    }
-                                }
-                            } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
-                                val relY = change.position.y % state.pageHeightPx
-                                viewModel.currentPath = viewModel.currentPath!! + change.position
-                            }
-
-                        // ── POINTER UP ────────────────────────────────────────────────────
-                        } else if (!change.pressed && change.previousPressed) {
-                            if (viewModel.isTextMode) {
-                                val downPos = textModeDownPos
+                            if (change.isConsumed) {
                                 textModeDownPos = null
-                                if (downPos == null) continue
-                                val dx = change.position.x - downPos.x
-                                val dy = change.position.y - downPos.y
-                                if (kotlin.math.sqrt(dx * dx + dy * dy) > 10.dp.toPx()) continue
-                                change.consume()
-                                handleTextTap(
-                                    tapPos = change.position,
-                                    viewModel = viewModel,
-                                    state = state,
-                                    availableWidthPx = availableWidthPx,
-                                    commitChanges = commitChanges
-                                )
+                                continue
+                            }
 
-                            } else if (viewModel.isLassoMode) {
-                                if (viewModel.isScalingSelection || viewModel.isDraggingSelection) {
-                                    viewModel.isScalingSelection = false
-                                    viewModel.isDraggingSelection = false
-                                    finalizeLassoDrag(
+                            val isStylus = change.type == PointerType.Stylus
+                            val isStylusEraser = change.type == PointerType.Eraser
+
+                            if (!isStylus && !isStylusEraser && !viewModel.isTextMode) continue
+
+                            if (!viewModel.isTextMode) change.consume()
+
+                            // ── POINTER DOWN ──────────────────────────────────────────────────
+                            if (change.pressed && !change.previousPressed) {
+                                if (state.pageHeightPx > 0f) {
+                                    // Gaps removed
+                                }
+
+                                if (viewModel.isTextMode) {
+                                    textModeDownPos = change.position
+                                } else if (viewModel.isLassoMode) {
+                                    change.consume()
+                                    val tapPos = change.position
+                                    val tBounds = viewModel.selectedLines
+                                        .filter { it.text != null }
+                                        .associateWith { l ->
+                                            val tw = state.staticTextLayouts[l]?.size?.width?.toFloat()
+                                                ?: (l.strokeWidth * 0.6f * l.text!!.length.toFloat())
+                                            val th = state.staticTextLayouts[l]?.size?.height?.toFloat()
+                                                ?: (l.strokeWidth * 1.5f)
+                                            Pair(tw, th)
+                                        }
+                                    val draggingHandle = viewModel.selectedLines.isNotEmpty() &&
+                                        isPointInScaleHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
+                                    val hittingMenuHandle = viewModel.selectedLines.isNotEmpty() &&
+                                        isPointInMenuHandle(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
+                                    val dragging = !draggingHandle && !hittingMenuHandle &&
+                                        viewModel.selectedLines.isNotEmpty() &&
+                                        isPointInSelectionBounds(tapPos, viewModel.selectedLines, viewModel.selectionDragOffset, viewModel.selectionScale, tBounds)
+
+                                    when {
+                                        hittingMenuHandle -> {
+                                            state.showLassoMenu = true
+                                            state.showLassoColorPicker = false
+                                            state.lassoMenuPosition = tapPos
+                                        }
+                                        draggingHandle -> {
+                                            if (viewModel.preLassoState == null)
+                                                viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
+                                            viewModel.isScalingSelection = true
+                                            state.showLassoMenu = false
+                                            state.showLassoColorPicker = false
+                                            dragStartScale = viewModel.selectionScale
+                                            dragStartOffset = viewModel.selectionDragOffset
+                                        }
+                                        dragging -> {
+                                            if (viewModel.preLassoState == null)
+                                                viewModel.preLassoState = viewModel.drawingLines.toList() + viewModel.selectedLines.toList()
+                                            viewModel.isDraggingSelection = true
+                                            state.showLassoMenu = false
+                                            state.showLassoColorPicker = false
+                                            dragStartOffset = viewModel.selectionDragOffset
+                                            dragStartScale = viewModel.selectionScale
+                                        }
+                                        else -> {
+                                            state.showLassoMenu = false
+                                            state.showLassoColorPicker = false
+                                            if (viewModel.selectedLines.isNotEmpty())
+                                                state.commitLassoSelection { commitChanges() }
+                                            viewModel.lassoPath = listOf(tapPos)
+                                        }
+                                    }
+                                } else if (viewModel.currentPath == null) {
+                                    commitActiveText(false)
+                                    viewModel.currentPath = listOf(change.position)
+                                    val path = Path()
+                                    path.moveTo(change.position.x, change.position.y)
+                                    viewModel.activePathObject = path
+                                    val actualEraserMode = isStylusEraser || viewModel.isEraserMode
+                                    val cVal = Color(state.currentColorValue.toULong())
+                                    val chosenColor = if (cVal in ALLOWED_PEN_COLORS) cVal else Color.Unspecified
+                                    viewModel.currentProperties = DrawingLine(
+                                        points = viewModel.currentPath!!,
+                                        color = if (actualEraserMode) Color.Unspecified else chosenColor,
+                                        strokeWidth = when {
+                                            actualEraserMode -> state.currentEraserThickness
+                                            viewModel.isHighlighterMode -> state.currentHighlighterThickness
+                                            else -> state.currentThickness
+                                        },
+                                        isEraser = actualEraserMode,
+                                        isHighlighter = viewModel.isHighlighterMode
+                                    )
+                                }
+
+                            // ── POINTER MOVE ──────────────────────────────────────────────────
+                            } else if (change.pressed && change.previousPressed) {
+                                if (viewModel.isLassoMode) {
+                                    change.consume()
+                                    when {
+                                        viewModel.isScalingSelection -> {
+                                            val dx = change.position.x - change.previousPosition.x
+                                            val dy = change.position.y - change.previousPosition.y
+                                            viewModel.selectionScale = kotlin.math.max(0.1f, viewModel.selectionScale + (dx + dy) / 400f)
+                                        }
+                                        viewModel.isDraggingSelection -> {
+                                            viewModel.selectionDragOffset += change.position - change.previousPosition
+                                        }
+                                        viewModel.lassoPath != null -> {
+                                            viewModel.lassoPath = viewModel.lassoPath!! + change.position
+                                        }
+                                    }
+                                } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
+                                    val relY = change.position.y % state.pageHeightPx
+                                    viewModel.currentPath = viewModel.currentPath!! + change.position
+                                    viewModel.activePathObject?.lineTo(change.position.x, change.position.y)
+                                }
+
+                            // ── POINTER UP ────────────────────────────────────────────────────
+                            } else if (!change.pressed && change.previousPressed) {
+                                if (viewModel.isTextMode) {
+                                    val downPos = textModeDownPos
+                                    textModeDownPos = null
+                                    if (downPos == null) continue
+                                    val dx = change.position.x - downPos.x
+                                    val dy = change.position.y - downPos.y
+                                    if (kotlin.math.sqrt(dx * dx + dy * dy) > 10.dp.toPx()) continue
+                                    change.consume()
+                                    handleTextTap(
+                                        tapPos = change.position,
                                         viewModel = viewModel,
                                         state = state,
-                                        dragStartOffset = dragStartOffset,
-                                        dragStartScale = dragStartScale,
+                                        availableWidthPx = availableWidthPx,
                                         commitChanges = commitChanges
                                     )
-                                } else if (viewModel.lassoPath != null) {
-                                    finalizeLassoSelection(viewModel = viewModel, state = state)
-                                }
 
-                            } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
-                                viewModel.pushUndoState()
-                                viewModel.drawingLines.add(viewModel.currentProperties.copy(points = viewModel.currentPath!!))
-                                viewModel.currentPath = null
-                                commitChanges()
+                                } else if (viewModel.isLassoMode) {
+                                    if (viewModel.isScalingSelection || viewModel.isDraggingSelection) {
+                                        viewModel.isScalingSelection = false
+                                        viewModel.isDraggingSelection = false
+                                        finalizeLassoDrag(
+                                            viewModel = viewModel,
+                                            state = state,
+                                            dragStartOffset = dragStartOffset,
+                                            dragStartScale = dragStartScale,
+                                            commitChanges = commitChanges
+                                        )
+                                    } else if (viewModel.lassoPath != null) {
+                                        finalizeLassoSelection(viewModel = viewModel, state = state)
+                                    }
+
+                                } else if (!viewModel.isTextMode && viewModel.currentPath != null) {
+                                    viewModel.pushUndoState()
+                                    val completedLine = viewModel.currentProperties.copy(points = viewModel.currentPath!!)
+                                    completedLine._cachedPath = viewModel.activePathObject
+                                    viewModel.drawingLines.add(completedLine)
+                                    viewModel.currentPath = null
+                                    viewModel.activePathObject = null
+                                    commitChanges()
+                                }
                             }
                         }
                     }
                 }
-            }
-    ) {
-        drawSavedLines(viewModel, state, strokeColor)
-        drawActiveLine(viewModel, strokeColor)
-        drawLassoPath(viewModel.lassoPath, primaryColor)
-        drawSelection(viewModel, state, strokeColor, primaryColor)
+        ) {
+            drawActiveLine(viewModel, strokeColor)
+            drawLassoPath(viewModel.lassoPath, primaryColor)
+            drawSelection(viewModel, state, strokeColor, primaryColor)
+        }
     }
 }
 
@@ -246,9 +266,11 @@ private fun DrawScope.drawSavedLines(viewModel: SNoteViewModel, state: SNoteEdit
 }
 
 private fun DrawScope.drawActiveLine(viewModel: SNoteViewModel, strokeColor: Color) {
-    viewModel.currentPath?.let { pts ->
-        val active = viewModel.currentProperties.copy(points = pts)
-        drawSNotePath(active.toPath(), active, active.strokeWidth, strokeColor)
+    val activePath = viewModel.activePathObject
+    val currentPath = viewModel.currentPath // Read state to register invalidation dependency on gesture updates
+    if (activePath != null && currentPath != null) {
+        val active = viewModel.currentProperties
+        drawSNotePath(activePath, active, active.strokeWidth, strokeColor)
     }
 }
 

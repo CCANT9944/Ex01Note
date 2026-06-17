@@ -40,7 +40,7 @@ data class DrawingLine(
     val text: String? = null
 ) {
     @Transient // Prevent potential serialization/reflection problems
-    private var _cachedPath: Path? = null
+    var _cachedPath: Path? = null
 
     fun toPath(): Path {
         if (_cachedPath != null) return _cachedPath!!

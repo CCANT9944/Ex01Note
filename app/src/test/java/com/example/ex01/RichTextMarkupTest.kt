@@ -875,4 +875,20 @@ class RichTextMarkupTest {
 
         assertTrue(isStrikethroughFormattingActive(value))
     }
+
+    @Test
+    fun richTextVisualTransformation_groupsConsecutiveStylesToAvoidSplitting() {
+        val raw = "\uE000Hello World\uE001"
+        val transformed = richTextVisualTransformation().filter(AnnotatedString(raw))
+
+        assertEquals("Hello World", transformed.text.text)
+
+        val spans = transformed.text.spanStyles
+        assertEquals(1, spans.size)
+        val boldSpan = spans.first()
+        assertEquals(0, boldSpan.start)
+        assertEquals(11, boldSpan.end)
+        assertEquals(FontWeight.Bold, boldSpan.item.fontWeight)
+    }
 }
+

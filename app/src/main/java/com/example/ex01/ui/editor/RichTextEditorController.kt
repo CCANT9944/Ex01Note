@@ -72,7 +72,11 @@ internal class RichTextEditorController(
             }
         }
 
-        val sanitized = sanitizeRichTextTyping(interceptedNext)
+        val sanitized = if (needsSanitization(value.text, interceptedNext.text)) {
+            sanitizeRichTextTyping(interceptedNext)
+        } else {
+            interceptedNext
+        }
         if (sanitized == value) return
         if (sanitized.text != value.text) {
             recordTypingUndoBoundary()
@@ -82,6 +86,41 @@ internal class RichTextEditorController(
         }
         value = sanitized
         canUndo = undoStack.isNotEmpty()
+    }
+
+    private fun needsSanitization(prev: String, next: String): Boolean {
+        if (next.length < prev.length) return true // Deletion
+        if (next == prev) return false
+
+        var start = 0
+        while (start < prev.length && start < next.length && prev[start] == next[start]) {
+            start++
+        }
+
+        var prevEnd = prev.length - 1
+        var nextEnd = next.length - 1
+        while (prevEnd >= start && nextEnd >= start && prev[prevEnd] == next[nextEnd]) {
+            prevEnd--
+            nextEnd--
+        }
+
+        // If any characters were deleted or replaced, sanitize
+        if (prevEnd >= start) return true
+
+        // Check only the newly typed/inserted characters
+        for (i in start..nextEnd) {
+            val char = next[i]
+            if (char == '[' || char == ']' || char == '\n' ||
+                char == BOLD_OPEN_MARKER || char == BOLD_CLOSE_MARKER ||
+                char == ITALIC_OPEN_MARKER || char == ITALIC_CLOSE_MARKER ||
+                char == UNDERLINE_OPEN_MARKER || char == UNDERLINE_CLOSE_MARKER ||
+                char == STRIKETHROUGH_OPEN_MARKER || char == STRIKETHROUGH_CLOSE_MARKER ||
+                char == BULLET_OPEN_MARKER || char == BULLET_CLOSE_MARKER
+            ) {
+                return true
+            }
+        }
+        return false
     }
 
     fun replaceValue(nextValue: TextFieldValue) {

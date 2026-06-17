@@ -49,7 +49,16 @@ private fun richTextTransform(raw: String): TransformedText {
     val colors = ArrayDeque<Color>()
     val highlights = ArrayDeque<Color>()
     val originalToTransformed = IntArray(raw.length + 1)
-    val transformedToOriginal = mutableListOf<Int>()
+    
+    var transformedToOriginal = IntArray(raw.length + 32)
+    var transformedCount = 0
+
+    fun addTransformedOffset(offset: Int) {
+        if (transformedCount >= transformedToOriginal.size) {
+            transformedToOriginal = transformedToOriginal.copyOf(transformedToOriginal.size * 2)
+        }
+        transformedToOriginal[transformedCount++] = offset
+    }
 
     fun currentStyle(): SpanStyle {
         val decorations = buildList {
@@ -68,6 +77,36 @@ private fun richTextTransform(raw: String): TransformedText {
             color = colors.lastOrNull() ?: Color.Unspecified,
             background = highlights.lastOrNull() ?: Color.Unspecified
         )
+    }
+
+    fun isStyled(style: SpanStyle): Boolean {
+        return style.fontWeight != FontWeight.Normal ||
+               style.fontStyle != FontStyle.Normal ||
+               style.textDecoration != TextDecoration.None ||
+               style.color != Color.Unspecified ||
+               style.background != Color.Unspecified
+    }
+
+    var activeStyle: SpanStyle? = null
+
+    fun updateActiveStyle() {
+        val current = currentStyle()
+        val styled = isStyled(current)
+        if (styled) {
+            if (activeStyle == null) {
+                builder.pushStyle(current)
+                activeStyle = current
+            } else if (activeStyle != current) {
+                builder.pop()
+                builder.pushStyle(current)
+                activeStyle = current
+            }
+        } else {
+            if (activeStyle != null) {
+                builder.pop()
+                activeStyle = null
+            }
+        }
     }
 
     var rawIndex = 0
@@ -124,12 +163,13 @@ private fun richTextTransform(raw: String): TransformedText {
         }
         if (current == BULLET_OPEN_MARKER) {
             originalToTransformed[rawIndex] = visibleIndex
+            updateActiveStyle()
             builder.append("• ")
-            if (transformedToOriginal.isEmpty()) {
-                transformedToOriginal.add(rawIndex)
+            if (transformedCount == 0) {
+                addTransformedOffset(rawIndex)
             }
-            transformedToOriginal.add(rawIndex)
-            transformedToOriginal.add(rawIndex)
+            addTransformedOffset(rawIndex)
+            addTransformedOffset(rawIndex)
             visibleIndex += 2
             bulletDepth.addLast(Unit)
             rawIndex++
@@ -177,9 +217,10 @@ private fun richTextTransform(raw: String): TransformedText {
                         if (bulletDepth.isNotEmpty()) bulletDepth.removeAt(bulletDepth.lastIndex)
                     } else {
                         if (bulletDepth.isEmpty()) {
+                            updateActiveStyle()
                             builder.append("• ")
-                            transformedToOriginal.add(rawIndex)
-                            transformedToOriginal.add(rawIndex)
+                            addTransformedOffset(rawIndex)
+                            addTransformedOffset(rawIndex)
                             visibleIndex += 2
                         }
                         bulletDepth.addLast(Unit)
@@ -203,30 +244,33 @@ private fun richTextTransform(raw: String): TransformedText {
 
         originalToTransformed[rawIndex] = visibleIndex
 
-        builder.pushStyle(currentStyle())
+        updateActiveStyle()
         builder.append(raw[rawIndex])
-        builder.pop()
 
-        if (transformedToOriginal.isEmpty()) {
-            transformedToOriginal.add(rawIndex)
+        if (transformedCount == 0) {
+            addTransformedOffset(rawIndex)
         }
 
         rawIndex++
         visibleIndex++
 
-        transformedToOriginal.add(rawIndex)
+        addTransformedOffset(rawIndex)
     }
 
-    if (transformedToOriginal.isEmpty()) {
+    if (transformedCount == 0) {
         val firstFormattingOpen = raw.indexOfFirst {
             it == BOLD_OPEN_MARKER || it == ITALIC_OPEN_MARKER || it == UNDERLINE_OPEN_MARKER || it == STRIKETHROUGH_OPEN_MARKER || it == BULLET_OPEN_MARKER
         }
-        transformedToOriginal.add(
+        addTransformedOffset(
             if (firstFormattingOpen >= 0) (firstFormattingOpen + 1).coerceAtMost(raw.length) else raw.length
         )
     }
 
     originalToTransformed[raw.length] = visibleIndex
+
+    if (activeStyle != null) {
+        builder.pop()
+    }
 
     val offsetMapping = object : OffsetMapping {
         override fun originalToTransformed(offset: Int): Int {
@@ -235,7 +279,7 @@ private fun richTextTransform(raw: String): TransformedText {
         }
 
         override fun transformedToOriginal(offset: Int): Int {
-            val clamped = offset.coerceIn(0, transformedToOriginal.lastIndex)
+            val clamped = offset.coerceIn(0, transformedCount - 1)
             return transformedToOriginal[clamped]
         }
     }
