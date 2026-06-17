@@ -46,6 +46,13 @@ fun SNoteTextInputLayer(
 
     val xPosDp = with(density) { activePos.x.toDp() }
 
+    // Request focus as soon as the text input layer becomes active
+    LaunchedEffect(activePos) {
+        try {
+            focusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
+
     Box(
         modifier = Modifier
             .offset { IntOffset(kotlin.math.round(activePos.x).toInt(), kotlin.math.round(activePos.y).toInt()) }

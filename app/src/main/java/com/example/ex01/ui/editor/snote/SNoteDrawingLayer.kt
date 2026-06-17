@@ -182,7 +182,7 @@ fun SNoteDrawingLayer(
                                     if (downPos == null) continue
                                     val dx = change.position.x - downPos.x
                                     val dy = change.position.y - downPos.y
-                                    if (kotlin.math.sqrt(dx * dx + dy * dy) > 10.dp.toPx()) continue
+                                    if (kotlin.math.sqrt(dx * dx + dy * dy) > 20.dp.toPx()) continue
                                     change.consume()
                                     handleTextTap(
                                         tapPos = change.position,
