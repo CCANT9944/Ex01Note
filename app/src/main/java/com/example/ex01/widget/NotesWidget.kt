@@ -368,4 +368,16 @@ fun WidgetContent(context: Context, note: Note?, checklist: List<NoteItem>, snot
 
 class NotesWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = NotesWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        val prefs = context.getSharedPreferences("notes_widget_prefs", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        for (id in appWidgetIds) {
+            editor.remove("widget_$id")
+            editor.remove("widget_snote_$id")
+        }
+        editor.apply()
+    }
 }
+

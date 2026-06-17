@@ -10,6 +10,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.core.content.edit
 
 class SNoteEditorState(
     val viewModel: SNoteViewModel,
@@ -41,27 +42,27 @@ class SNoteEditorState(
 
     fun updatePenThickness(t: Float) {
         currentThickness = t
-        prefs.edit().putFloat("pen_thickness", t).apply()
+        prefs.edit { putFloat("pen_thickness", t) }
     }
 
     fun updateEraserThickness(t: Float) {
         currentEraserThickness = t
-        prefs.edit().putFloat("eraser_thickness", t).apply()
+        prefs.edit { putFloat("eraser_thickness", t) }
     }
 
     fun updateTextSize(t: Float) {
         currentTextSize = t
-        prefs.edit().putFloat("text_size", t).apply()
+        prefs.edit { putFloat("text_size", t) }
     }
 
     fun updateHighlighterThickness(t: Float) {
         currentHighlighterThickness = t
-        prefs.edit().putFloat("highlighter_thickness", t).apply()
+        prefs.edit { putFloat("highlighter_thickness", t) }
     }
 
     fun updatePenColor(c: Long) {
         currentColorValue = c
-        prefs.edit().putLong("pen_color", c).apply()
+        prefs.edit { putLong("pen_color", c) }
     }
 
     fun mergeAdjacentTextBlocks() {
